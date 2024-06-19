@@ -7,6 +7,8 @@ var redone := false
 var is_quitting_on_save := false
 var changed_projects_on_quit: Array[Project]
 var cursor_image := preload("res://assets/graphics/cursor.png")
+## Used to download an image when dragged and dropped directly from a browser into Pixelorama
+var url_to_download := ""
 var splash_dialog: AcceptDialog:
 	get:
 		if not is_instance_valid(splash_dialog):
@@ -16,11 +18,141 @@ var splash_dialog: AcceptDialog:
 
 @onready var main_ui := $MenuAndUI/UI/DockableContainer as DockableContainer
 @onready var backup_confirmation: ConfirmationDialog = $Dialogs/BackupConfirmation
+@onready var save_sprite_dialog := $Dialogs/SaveSprite as FileDialog
 @onready var save_sprite_html5: ConfirmationDialog = $Dialogs/SaveSpriteHTML5
 @onready var quit_dialog: ConfirmationDialog = $Dialogs/QuitDialog
 @onready var quit_and_save_dialog: ConfirmationDialog = $Dialogs/QuitAndSaveDialog
+@onready var download_confirmation := $Dialogs/DownloadImageConfirmationDialog as ConfirmationDialog
 @onready var left_cursor: Sprite2D = $LeftCursor
 @onready var right_cursor: Sprite2D = $RightCursor
+@onready var image_request := $ImageRequest as HTTPRequest
+
+
+class CLI:
+	static var args_list := {
+		["--version", "--pixelorama-version"]:
+		[CLI.print_version, "Prints current Pixelorama version"],
+		["--size"]: [CLI.print_project_size, "Prints size of the given project"],
+		["--framecount"]: [CLI.print_frame_count, "Prints total frames in the current project"],
+		["--export", "-e"]: [CLI.enable_export, "Indicates given project should be exported"],
+		["--spritesheet", "-s"]:
+		[CLI.enable_spritesheet, "Indicates given project should be exported as spritesheet"],
+		["--output", "-o"]: [CLI.set_output, "[path] Name of output file (with extension)"],
+		["--scale"]: [CLI.set_export_scale, "[integer] Scales up the export image by a number"],
+		["--frames", "-f"]: [CLI.set_frames, "[integer-integer] Used to specify frame range"],
+		["--direction", "-d"]: [CLI.set_direction, "[0, 1, 2] Specifies direction"],
+		["--json"]: [CLI.set_json, "Export the JSON data of the project"],
+		["--split-layers"]: [CLI.set_split_layers, "Each layer exports separately"],
+		["--help", "-h", "-?"]: [CLI.generate_help, "Displays this help page"]
+	}
+
+	static func generate_help(_project: Project, _next_arg: String):
+		var help := str(
+			(
+				"""
+ =========================================================================\n
+Help for Pixelorama's CLI.
+
+Usage:
+\t%s [SYSTEM OPTIONS] -- [USER OPTIONS] [FILES]...
+
+Use -h in place of [SYSTEM OPTIONS] to see [SYSTEM OPTIONS].
+Or use -h in place of [USER OPTIONS] to see [USER OPTIONS].
+
+some useful [SYSTEM OPTIONS] are:
+--headless     Run in headless mode.
+--quit         Close pixelorama after current command.
+
+
+[USER OPTIONS]:\n
+(The terms in [ ] reflect the valid type for corresponding argument).
+
+"""
+				% OS.get_executable_path().get_file()
+			)
+		)
+		for command_group: Array in args_list.keys():
+			help += str(
+				var_to_str(command_group).replace("[", "").replace("]", "").replace('"', ""),
+				"\t\t".c_unescape(),
+				args_list[command_group][1],
+				"\n".c_unescape()
+			)
+		help += "========================================================================="
+		print(help)
+
+	## Dedicated place for command line args callables
+	static func print_version(_project: Project, _next_arg: String) -> void:
+		print(Global.current_version)
+
+	static func print_project_size(project: Project, _next_arg: String) -> void:
+		print(project.size)
+
+	static func print_frame_count(project: Project, _next_arg: String) -> void:
+		print(project.frames.size())
+
+	static func enable_export(_project: Project, _next_arg: String):
+		return true
+
+	static func enable_spritesheet(_project: Project, _next_arg: String):
+		Export.current_tab = Export.ExportTab.SPRITESHEET
+		return true
+
+	static func set_output(project: Project, next_arg: String) -> void:
+		if not next_arg.is_empty():
+			project.file_name = next_arg.get_basename()
+			var extension := next_arg.get_extension()
+			project.file_format = Export.get_file_format_from_extension(extension)
+
+	static func set_export_scale(_project: Project, next_arg: String) -> void:
+		if not next_arg.is_empty():
+			if next_arg.is_valid_float():
+				Export.resize = next_arg.to_float() * 100
+
+	static func set_frames(project: Project, next_arg: String) -> void:
+		if not next_arg.is_empty():
+			if next_arg.contains("-"):
+				var frame_numbers := next_arg.split("-")
+				if frame_numbers.size() > 1:
+					project.selected_cels.clear()
+					var frame_number_1 := 0
+					if frame_numbers[0].is_valid_int():
+						frame_number_1 = frame_numbers[0].to_int() - 1
+					frame_number_1 = clampi(frame_number_1, 0, project.frames.size() - 1)
+					var frame_number_2 := project.frames.size() - 1
+					if frame_numbers[1].is_valid_int():
+						frame_number_2 = frame_numbers[1].to_int() - 1
+					frame_number_2 = clampi(frame_number_2, 0, project.frames.size() - 1)
+					for frame in range(frame_number_1, frame_number_2 + 1):
+						project.selected_cels.append([frame, project.current_layer])
+						project.change_cel(frame)
+						Export.frame_current_tag = Export.ExportFrames.SELECTED_FRAMES
+			elif next_arg.is_valid_int():
+				var frame_number := next_arg.to_int() - 1
+				frame_number = clampi(frame_number, 0, project.frames.size() - 1)
+				project.selected_cels = [[frame_number, project.current_layer]]
+				project.change_cel(frame_number)
+				Export.frame_current_tag = Export.ExportFrames.SELECTED_FRAMES
+
+	static func set_direction(_project: Project, next_arg: String) -> void:
+		if not next_arg.is_empty():
+			next_arg = next_arg.to_lower()
+			if next_arg == "0" or next_arg.contains("forward"):
+				Export.direction = Export.AnimationDirection.FORWARD
+			elif next_arg == "1" or next_arg.contains("backward"):
+				Export.direction = Export.AnimationDirection.BACKWARDS
+			elif next_arg == "2" or next_arg.contains("ping"):
+				Export.direction = Export.AnimationDirection.PING_PONG
+			else:
+				print(Export.AnimationDirection.keys()[Export.direction])
+		else:
+			print(Export.AnimationDirection.keys()[Export.direction])
+
+	static func set_json(_project: Project, _next_arg: String) -> void:
+		Export.export_json = true
+
+	static func set_split_layers(_project: Project, _next_arg: String) -> void:
+		Export.split_layers = true
 
 
 func _init() -> void:
@@ -32,7 +164,6 @@ func _init() -> void:
 
 func _ready() -> void:
 	get_tree().set_auto_accept_quit(false)
-	_setup_application_window_size()
 
 	Global.main_window.title = tr("untitled") + " - Pixelorama " + Global.current_version
 
@@ -48,7 +179,7 @@ func _ready() -> void:
 	Global.open_sprites_dialog.current_dir = Global.config_cache.get_value(
 		"data", "current_dir", OS.get_system_dir(OS.SYSTEM_DIR_DESKTOP)
 	)
-	Global.save_sprites_dialog.current_dir = Global.config_cache.get_value(
+	save_sprite_dialog.current_dir = Global.config_cache.get_value(
 		"data", "current_dir", OS.get_system_dir(OS.SYSTEM_DIR_DESKTOP)
 	)
 	var include_blended := CheckBox.new()
@@ -60,12 +191,14 @@ This makes the pxo file larger and is useful for importing by third-party softwa
 or CLI exporting. Loading pxo files in Pixelorama does not need this option to be enabled.
 """
 	include_blended.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	Global.save_sprites_dialog.get_vbox().add_child(include_blended)
+	save_sprite_dialog.get_vbox().add_child(include_blended)
 	_handle_cmdline_arguments()
 	get_tree().root.files_dropped.connect(_on_files_dropped)
 	if OS.get_name() == "Android":
 		OS.request_permissions()
 	_handle_backup()
+	await get_tree().process_frame
+	_setup_application_window_size()
 	_show_splash_screen()
 	Global.pixelorama_opened.emit()
 
@@ -114,12 +247,17 @@ func _handle_layout_files() -> void:
 
 
 func _setup_application_window_size() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
 	var root := get_tree().root
 	root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_IGNORE
 	root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
 	# Set a minimum window size to prevent UI elements from collapsing on each other.
 	root.min_size = Vector2(1024, 576)
 	root.content_scale_factor = Global.shrink
+	if Global.font_size != theme.default_font_size:
+		theme.default_font_size = Global.font_size
+		theme.set_font_size("font_size", "HeaderSmall", Global.font_size + 2)
 	set_custom_cursor()
 
 	if OS.get_name() == "Web":
@@ -144,7 +282,6 @@ func _setup_application_window_size() -> void:
 func set_custom_cursor() -> void:
 	if Global.native_cursors:
 		return
-
 	if Global.shrink == 1.0:
 		Input.set_custom_mouse_cursor(cursor_image, Input.CURSOR_CROSS, Vector2(15, 15))
 	else:
@@ -163,7 +300,6 @@ func _show_splash_screen() -> void:
 
 	if Global.config_cache.get_value("preferences", "startup"):
 		# Wait for the window to adjust itself, so the popup is correctly centered
-		await get_tree().process_frame
 		await get_tree().process_frame
 
 		splash_dialog.popup_centered()  # Splash screen
@@ -188,15 +324,48 @@ func _handle_backup() -> void:
 
 func _handle_cmdline_arguments() -> void:
 	var args := OS.get_cmdline_args()
+	args.append_array(OS.get_cmdline_user_args())
 	if args.is_empty():
 		return
-
+	# Load the files first
 	for arg in args:
+		var file_path := arg
+		if file_path.is_relative_path():
+			file_path = OS.get_executable_path().get_base_dir().path_join(arg)
+		OpenSave.handle_loading_file(file_path)
+
+	var project := Global.current_project
+	# True when exporting from the CLI.
+	# Exporting should be done last, this variable helps with that
+	var should_export := false
+
+	var parse_dic := {}
+	for command_group: Array in CLI.args_list.keys():
+		for command: String in command_group:
+			parse_dic[command] = CLI.args_list[command_group][0]
+	for i in args.size():  # Handle the rest of the CLI arguments
+		var arg := args[i]
+		var next_argument := ""
+		if i + 1 < args.size():
+			next_argument = args[i + 1]
 		if arg.begins_with("-") or arg.begins_with("--"):
-			# TODO: Add code to handle custom command line arguments
-			continue
-		else:
-			OpenSave.handle_loading_file(arg)
+			if arg in parse_dic.keys():
+				var callable: Callable = parse_dic[arg]
+				var output = callable.call(project, next_argument)
+				if typeof(output) == TYPE_BOOL:
+					should_export = output
+			else:
+				print("==========")
+				print("Unknown option: %s" % arg)
+				for compare_arg in parse_dic.keys():
+					if arg.similarity(compare_arg) >= 0.4:
+						print("Similar option: %s" % compare_arg)
+				print("==========")
+				should_export = false
+				get_tree().quit()
+				break
+	if should_export:
+		Export.external_export(project)
 
 
 func _notification(what: int) -> void:
@@ -220,6 +389,15 @@ func _notification(what: int) -> void:
 
 func _on_files_dropped(files: PackedStringArray) -> void:
 	for file in files:
+		if not FileAccess.file_exists(file):
+			# If the file doesn't exist, it could be a URL. This can occur when dragging
+			# and dropping an image directly from the browser into Pixelorama.
+			# For security reasons, ask the user if they want to confirm the image download.
+			download_confirmation.dialog_text = (
+				tr("Do you want to download the image from %s?") % file
+			)
+			download_confirmation.popup_centered()
+			url_to_download = file
 		OpenSave.handle_loading_file(file)
 	if splash_dialog.visible:
 		splash_dialog.hide()
@@ -249,7 +427,7 @@ func load_recent_project_file(path: String) -> void:
 func _on_OpenSprite_files_selected(paths: PackedStringArray) -> void:
 	for path in paths:
 		OpenSave.handle_loading_file(path)
-	Global.save_sprites_dialog.current_dir = paths[0].get_base_dir()
+	save_sprite_dialog.current_dir = paths[0].get_base_dir()
 
 
 func show_save_dialog(project := Global.current_project) -> void:
@@ -259,12 +437,17 @@ func show_save_dialog(project := Global.current_project) -> void:
 		save_sprite_html5.popup_centered()
 		save_filename.text = project.name
 	else:
-		Global.save_sprites_dialog.popup_centered()
-		Global.save_sprites_dialog.get_line_edit().text = project.name
+		save_sprite_dialog.popup_centered()
+		save_sprite_dialog.get_line_edit().text = project.name
 
 
 func _on_SaveSprite_file_selected(path: String) -> void:
 	save_project(path)
+
+
+func _on_save_sprite_visibility_changed() -> void:
+	if not save_sprite_dialog.visible:
+		is_quitting_on_save = false
 
 
 func save_project(path: String) -> void:
@@ -278,16 +461,13 @@ func save_project(path: String) -> void:
 		path = "user://".path_join(file_name)
 		include_blended = save_sprite_html5.get_node("%IncludeBlended").button_pressed
 	else:
-		include_blended = (
-			Global.save_sprites_dialog.get_vbox().get_node("IncludeBlended").button_pressed
-		)
+		include_blended = save_sprite_dialog.get_vbox().get_node("IncludeBlended").button_pressed
 	var success := OpenSave.save_pxo_file(path, false, include_blended, project_to_save)
 	if success:
 		Global.open_sprites_dialog.current_dir = path.get_base_dir()
 	if is_quitting_on_save:
 		changed_projects_on_quit.pop_front()
 		_save_on_quit_confirmation()
-		is_quitting_on_save = false
 
 
 func _on_open_sprite_visibility_changed() -> void:
@@ -384,6 +564,12 @@ func _clear_backup_files() -> void:
 
 
 func _exit_tree() -> void:
+	for project in Global.projects:
+		project.remove()
+	# For some reason, the above is not enough to remove all backup files
+	_clear_backup_files()
+	if DisplayServer.get_name() == "headless":
+		return
 	Global.config_cache.set_value("window", "layout", Global.layouts.find(main_ui.layout))
 	Global.config_cache.set_value("window", "screen", get_window().current_screen)
 	Global.config_cache.set_value(
@@ -404,9 +590,30 @@ func _exit_tree() -> void:
 	Global.config_cache.set_value("view_menu", "show_rulers", Global.show_rulers)
 	Global.config_cache.set_value("view_menu", "show_guides", Global.show_guides)
 	Global.config_cache.set_value("view_menu", "show_mouse_guides", Global.show_mouse_guides)
-	Global.config_cache.save("user://cache.ini")
+	Global.config_cache.set_value(
+		"view_menu", "display_layer_effects", Global.display_layer_effects
+	)
+	Global.config_cache.set_value(
+		"view_menu", "snap_to_rectangular_grid_boundary", Global.snap_to_rectangular_grid_boundary
+	)
+	Global.config_cache.set_value(
+		"view_menu", "snap_to_rectangular_grid_center", Global.snap_to_rectangular_grid_center
+	)
+	Global.config_cache.set_value("view_menu", "snap_to_guides", Global.snap_to_guides)
+	Global.config_cache.set_value(
+		"view_menu", "snap_to_perspective_guides", Global.snap_to_perspective_guides
+	)
+	Global.config_cache.save(Global.CONFIG_PATH)
 
-	for project in Global.projects:
-		project.remove()
-	# For some reason, the above is not enough to remove all backup files
-	_clear_backup_files()
+
+func _on_download_image_confirmation_dialog_confirmed() -> void:
+	image_request.request(url_to_download)
+
+
+func _on_image_request_request_completed(
+	_result: int, _response_code: int, _headers: PackedStringArray, body: PackedByteArray
+) -> void:
+	var image := OpenSave.load_image_from_buffer(body)
+	if image.is_empty():
+		return
+	OpenSave.handle_loading_image(OS.get_system_dir(OS.SYSTEM_DIR_DESKTOP), image)

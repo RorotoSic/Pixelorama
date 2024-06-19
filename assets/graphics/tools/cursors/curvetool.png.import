@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://i13jhsg117kd"
-path="res://.godot/imported/tag.png-d40c07fde0f15ca4aa9533f283d8253f.ctex"
+uid="uid://deuy67ughoib3"
+path="res://.godot/imported/curvetool.png-035b507342a996edf5b660cc7e5f8671.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/graphics/timeline/tag.png"
-dest_files=["res://.godot/imported/tag.png-d40c07fde0f15ca4aa9533f283d8253f.ctex"]
+source_file="res://assets/graphics/tools/cursors/curvetool.png"
+dest_files=["res://.godot/imported/curvetool.png-035b507342a996edf5b660cc7e5f8671.ctex"]
 
 [params]
 

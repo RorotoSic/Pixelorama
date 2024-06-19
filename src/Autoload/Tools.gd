@@ -14,8 +14,8 @@ var alpha_locked := false
 # Dynamics
 var stabilizer_enabled := false
 var stabilizer_value := 16
-var dynamics_alpha: int = Dynamics.NONE
-var dynamics_size: int = Dynamics.NONE
+var dynamics_alpha := Dynamics.NONE
+var dynamics_size := Dynamics.NONE
 var pen_pressure := 1.0
 var pen_pressure_min := 0.2
 var pen_pressure_max := 0.8
@@ -149,6 +149,22 @@ var tools := {
 Hold %s to center the shape on the click origin
 Hold %s to displace the shape's origin""",
 			["shape_perfect", "shape_center", "shape_displace"]
+		)
+	),
+	"CurveTool":
+	(
+		Tool
+		. new(
+			"CurveTool",
+			"Curve Tool",
+			"curvetool",
+			"res://src/Tools/DesignTools/CurveTool.tscn",
+			[Global.LayerTypes.PIXEL],
+			"""Draws bezier curves
+Press %s/%s to add new points
+Press and drag to control the curvature
+Press %s to remove the last added point""",
+			["activate_left_tool", "activate_right_tool", "change_tool_mode"]
 		)
 	),
 	"RectangleTool":
@@ -461,6 +477,8 @@ func get_mirrored_positions(
 
 func set_button_size(button_size: int) -> void:
 	var size := Vector2(24, 24) if button_size == Global.ButtonSize.SMALL else Vector2(32, 32)
+	if not is_instance_valid(_tool_buttons):
+		await get_tree().process_frame
 	for t in _tool_buttons.get_children():
 		t.custom_minimum_size = size
 

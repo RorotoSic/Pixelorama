@@ -12,6 +12,7 @@ config_version=5
 
 config/name="Pixelorama"
 config/description="A free & open-source 2D sprite editor"
+config/version="v1.0-beta2"
 run/main_scene="res://src/Main.tscn"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="pixelorama"
@@ -19,10 +20,10 @@ config/features=PackedStringArray("4.2")
 run/low_processor_mode=true
 boot_splash/bg_color=Color(0.145098, 0.145098, 0.164706, 1)
 boot_splash/image="res://assets/graphics/splash.png"
+boot_splash/use_filter=false
 config/icon="res://assets/graphics/icons/icon.png"
 config/macos_native_icon="res://assets/graphics/icons/icon.icns"
 config/windows_native_icon="res://assets/graphics/icons/icon.ico"
-config/Version="v1.0-dev"
 config/ExtensionsAPI_Version=4
 config/Pxo_Version=3
 
@@ -42,6 +43,7 @@ Export="*res://src/Autoload/Export.gd"
 Palettes="*res://src/Autoload/Palettes.gd"
 Keychain="*res://addons/keychain/Keychain.gd"
 ExtensionsApi="*res://src/Autoload/ExtensionsApi.gd"
+Themes="*res://src/Autoload/Themes.gd"
 
 [debug]
 
@@ -620,7 +622,8 @@ activate_right_tool={
 }
 open_last_project={
 "deadzone": 0.5,
-"events": []
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"command_or_control_autoremap":true,"alt_pressed":false,"shift_pressed":true,"pressed":false,"keycode":84,"physical_keycode":0,"key_label":0,"unicode":84,"echo":false,"script":null)
+]
 }
 preferences={
 "deadzone": 0.5,
@@ -772,10 +775,6 @@ clone_frame={
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"command_or_control_autoremap":true,"alt_pressed":false,"shift_pressed":true,"pressed":false,"keycode":4194311,"physical_keycode":0,"key_label":0,"unicode":0,"echo":false,"script":null)
 ]
 }
-manage_frame_tags={
-"deadzone": 0.5,
-"events": []
-}
 move_frame_left={
 "deadzone": 0.5,
 "events": []
@@ -839,6 +838,42 @@ cancel_reference_transform={
 "deadzone": 0.5,
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194305,"key_label":0,"unicode":0,"echo":false,"script":null)
 ]
+}
+project_properties={
+"deadzone": 0.5,
+"events": []
+}
+palettize={
+"deadzone": 0.5,
+"events": []
+}
+pixelize={
+"deadzone": 0.5,
+"events": []
+}
+go_to_previous_layer={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"command_or_control_autoremap":true,"alt_pressed":false,"shift_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194322,"key_label":0,"unicode":0,"echo":false,"script":null)
+]
+}
+go_to_next_layer={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"command_or_control_autoremap":true,"alt_pressed":false,"shift_pressed":false,"pressed":false,"keycode":0,"physical_keycode":4194320,"key_label":0,"unicode":0,"echo":false,"script":null)
+]
+}
+left_curvetool_tool={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":74,"physical_keycode":0,"key_label":0,"unicode":106,"echo":false,"script":null)
+]
+}
+right_curvetool_tool={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":true,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":74,"physical_keycode":0,"key_label":0,"unicode":106,"echo":false,"script":null)
+]
+}
+alpha_lock={
+"deadzone": 0.5,
+"events": []
 }
 
 [input_devices]

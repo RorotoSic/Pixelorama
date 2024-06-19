@@ -421,18 +421,20 @@ func select_rect(rect: Rect2i, operation := SelectionOperation.ADD) -> void:
 	elif operation == SelectionOperation.SUBTRACT:
 		project.selection_map.fill_rect(rect, Color(0))
 	elif operation == SelectionOperation.INTERSECT:
+		var previous_selection_map := SelectionMap.new()
+		previous_selection_map.copy_from(project.selection_map)
 		project.selection_map.clear()
 		for x in range(rect.position.x, rect.end.x):
 			for y in range(rect.position.y, rect.end.y):
 				var pos := Vector2i(x, y)
-				if !Rect2i(Vector2i.ZERO, project.selection_map.get_size()).has_point(pos):
+				if !Rect2i(Vector2i.ZERO, previous_selection_map.get_size()).has_point(pos):
 					continue
 				project.selection_map.select_pixel(
-					pos, project.selection_map.is_pixel_selected(pos)
+					pos, previous_selection_map.is_pixel_selected(pos, false)
 				)
 	big_bounding_rectangle = project.selection_map.get_used_rect()
 
-	if offset_position != Vector2i.ZERO:
+	if offset_position != Vector2i.ZERO and big_bounding_rectangle.get_area() != 0:
 		big_bounding_rectangle.position += offset_position
 		project.selection_map.move_bitmap_values(project)
 
@@ -683,7 +685,7 @@ func copy() -> void:
 						offset_pos.x = 0
 					if offset_pos.y < 0:
 						offset_pos.y = 0
-					if not project.selection_map.is_pixel_selected(pos + offset_pos):
+					if not project.selection_map.is_pixel_selected(pos + offset_pos, false):
 						to_copy.set_pixelv(pos, Color(0))
 			cl_selection_map.copy_from(project.selection_map)
 		cl_big_bounding_rectangle = big_bounding_rectangle

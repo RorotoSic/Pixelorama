@@ -37,7 +37,7 @@ func handle_loading_file(file: String) -> void:
 		Palettes.import_palette_from_path(file, true)
 
 	elif file_ext in ["pck", "zip"]:  # Godot resource pack file
-		Global.preferences_dialog.extensions.install_extension(file)
+		Global.control.get_node("Extensions").install_extension(file)
 
 	elif file_ext == "shader" or file_ext == "gdshader":  # Godot shader file
 		var shader := load(file)
@@ -53,7 +53,8 @@ func handle_loading_file(file: String) -> void:
 		var apng_res := AImgIOAPNGImporter.load_from_file(file)
 		if apng_res[0] == null:
 			# No error - this is an APNG!
-			handle_loading_aimg(file, apng_res[1])
+			if typeof(apng_res[1]) == TYPE_ARRAY:
+				handle_loading_aimg(file, apng_res[1])
 			return
 		# Attempt to load as a regular image.
 		var image := Image.load_from_file(file)
@@ -68,11 +69,11 @@ func handle_loading_file(file: String) -> void:
 
 func add_import_option(import_name: StringName, import_scene: PackedScene) -> int:
 	# Change format name if another one uses the same name
-	var existing_format_names = (
+	var existing_format_names := (
 		ImportPreviewDialog.ImageImportOptions.keys() + custom_import_names.keys()
 	)
 	for i in range(existing_format_names.size()):
-		var test_name = import_name
+		var test_name := import_name
 		if i != 0:
 			test_name = str(test_name, "_", i)
 		if !existing_format_names.has(test_name):
@@ -82,7 +83,7 @@ func add_import_option(import_name: StringName, import_scene: PackedScene) -> in
 	# Obtain a unique id
 	var id := ImportPreviewDialog.ImageImportOptions.size()
 	for i in custom_import_names.size():
-		var format_id = id + i
+		var format_id := id + i
 		if !custom_import_names.values().has(i):
 			id = format_id
 	# Add to custom_file_formats
@@ -91,7 +92,26 @@ func add_import_option(import_name: StringName, import_scene: PackedScene) -> in
 	return id
 
 
+## Mostly used for downloading images from the Internet. Tries multiple file extensions
+## in case the extension of the file is wrong, which is common for images on the Internet.
+func load_image_from_buffer(buffer: PackedByteArray) -> Image:
+	var image := Image.new()
+	var err := image.load_png_from_buffer(buffer)
+	if err != OK:
+		err = image.load_jpg_from_buffer(buffer)
+		if err != OK:
+			err = image.load_webp_from_buffer(buffer)
+			if err != OK:
+				err = image.load_tga_from_buffer(buffer)
+				if err != OK:
+					image.load_bmp_from_buffer(buffer)
+	return image
+
+
 func handle_loading_image(file: String, image: Image) -> void:
+	if Global.projects.size() <= 1 and Global.current_project.is_empty():
+		open_image_as_new_tab(file, image)
+		return
 	var preview_dialog := preview_dialog_tscn.instantiate() as ImportPreviewDialog
 	# add custom importers to preview dialog
 	for import_name in custom_import_names.keys():
@@ -198,9 +218,9 @@ func open_pxo_file(path: String, is_backup := false, replace_empty := true) -> v
 			new_project.frames = []
 			new_project.layers = []
 			new_project.animation_tags.clear()
-			new_project.name = path.get_file()
+			new_project.name = path.get_file().get_basename()
 		else:
-			new_project = Project.new([], path.get_file())
+			new_project = Project.new([], path.get_file().get_basename())
 		var data_json := zip_reader.read_file("data.json").get_string_from_utf8()
 		var test_json_conv := JSON.new()
 		var error := test_json_conv.parse(data_json)
@@ -255,13 +275,12 @@ func open_pxo_file(path: String, is_backup := false, replace_empty := true) -> v
 	else:
 		# Loading a backup should not change window title and save path
 		new_project.save_path = path
-		Global.main_window.title = path.get_file() + " - Pixelorama " + Global.current_version
+		Global.main_window.title = new_project.name + " - Pixelorama " + Global.current_version
 		Global.save_sprites_dialog.current_path = path
 		# Set last opened project path and save
 		Global.config_cache.set_value("data", "current_dir", path.get_base_dir())
 		Global.config_cache.set_value("data", "last_project_path", path)
-		Global.config_cache.save("user://cache.ini")
-		new_project.export_directory_path = path.get_base_dir()
+		Global.config_cache.save(Global.CONFIG_PATH)
 		new_project.file_name = path.get_file().trim_suffix(".pxo")
 		new_project.was_exported = false
 		Global.top_menu_container.file_menu.set_item_text(
@@ -302,9 +321,9 @@ func open_v0_pxo_file(path: String, empty_project: bool) -> Project:
 		new_project.frames = []
 		new_project.layers = []
 		new_project.animation_tags.clear()
-		new_project.name = path.get_file()
+		new_project.name = path.get_file().get_basename()
 	else:
-		new_project = Project.new([], path.get_file())
+		new_project = Project.new([], path.get_file().get_basename())
 	new_project.deserialize(result, null, file)
 	if result.has("brushes"):
 		for brush in result.brushes:
@@ -418,12 +437,12 @@ func save_pxo_file(
 			project.has_changed = false
 		Global.current_project.remove_backup_file()
 		Global.notification_label("File saved")
-		Global.main_window.title = path.get_file() + " - Pixelorama " + Global.current_version
+		Global.main_window.title = project.name + " - Pixelorama " + Global.current_version
 
 		# Set last opened project path and save
 		Global.config_cache.set_value("data", "current_dir", path.get_base_dir())
 		Global.config_cache.set_value("data", "last_project_path", path)
-		Global.config_cache.save("user://cache.ini")
+		Global.config_cache.save(Global.CONFIG_PATH)
 		if !project.was_exported:
 			project.file_name = path.get_file().trim_suffix(".pxo")
 			project.export_directory_path = path.get_base_dir()
@@ -512,7 +531,7 @@ func open_image_as_spritesheet_layer_smart(
 	# Create new frames (if needed)
 	var new_frames_size := maxi(project.frames.size(), start_frame + sliced_rects.size())
 	var frames := []
-	var frame_indices := []
+	var frame_indices := PackedInt32Array([])
 	if new_frames_size > project.frames.size():
 		var required_frames := new_frames_size - project.frames.size()
 		frame_indices = range(
@@ -593,7 +612,7 @@ func open_image_as_spritesheet_layer(
 	# Create new frames (if needed)
 	var new_frames_size := maxi(project.frames.size(), start_frame + (vertical * horizontal))
 	var frames := []
-	var frame_indices := []
+	var frame_indices := PackedInt32Array([])
 	if new_frames_size > project.frames.size():
 		var required_frames := new_frames_size - project.frames.size()
 		frame_indices = range(
@@ -785,8 +804,7 @@ func set_new_imported_tab(project: Project, path: String) -> void:
 	if project.has_changed:
 		Global.main_window.title = Global.main_window.title + "(*)"
 	var file_name := path.get_basename().get_file()
-	var export_directory_path := path.get_base_dir()
-	project.export_directory_path = export_directory_path
+	project.export_directory_path = path.get_base_dir()
 	project.file_name = file_name
 	project.was_exported = true
 	if path.get_extension().to_lower() == "png":
@@ -800,6 +818,8 @@ func set_new_imported_tab(project: Project, path: String) -> void:
 
 
 func update_autosave() -> void:
+	if not is_instance_valid(autosave_timer):
+		return
 	autosave_timer.stop()
 	# Interval parameter is in minutes, wait_time is seconds
 	autosave_timer.wait_time = Global.autosave_interval * 60

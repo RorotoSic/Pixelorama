@@ -2,17 +2,22 @@ extends AcceptDialog
 
 var preferences: Array[Preference] = [
 	Preference.new(
-		"open_last_project", "Startup/StartupContainer/OpenLastProject", "button_pressed"
+		"open_last_project", "Startup/StartupContainer/OpenLastProject", "button_pressed", false
 	),
 	Preference.new(
-		"quit_confirmation", "Startup/StartupContainer/QuitConfirmation", "button_pressed"
+		"quit_confirmation", "Startup/StartupContainer/QuitConfirmation", "button_pressed", false
 	),
-	Preference.new("ffmpeg_path", "Startup/StartupContainer/FFMPEGPath", "text"),
-	Preference.new("shrink", "%ShrinkSlider", "value"),
-	Preference.new("font_size", "Interface/InterfaceOptions/FontSizeSlider", "value"),
-	Preference.new("dim_on_popup", "Interface/InterfaceOptions/DimCheckBox", "button_pressed"),
+	Preference.new("ffmpeg_path", "Startup/StartupContainer/FFMPEGPath", "text", ""),
+	Preference.new("shrink", "%ShrinkSlider", "value", 1.0),
+	Preference.new("font_size", "%FontSizeSlider", "value", 16),
 	Preference.new(
-		"use_native_file_dialogs", "Interface/InterfaceOptions/NativeFileDialogs", "button_pressed"
+		"dim_on_popup", "Interface/InterfaceOptions/DimCheckBox", "button_pressed", true
+	),
+	Preference.new(
+		"use_native_file_dialogs",
+		"Interface/InterfaceOptions/NativeFileDialogs",
+		"button_pressed",
+		false
 	),
 	Preference.new(
 		"single_window_mode",
@@ -21,107 +26,173 @@ var preferences: Array[Preference] = [
 		true,
 		true
 	),
-	Preference.new("icon_color_from", "Interface/ButtonOptions/IconColorOptionButton", "selected"),
-	Preference.new("custom_icon_color", "Interface/ButtonOptions/IconColorButton", "color"),
-	Preference.new("left_tool_color", "Interface/ButtonOptions/LeftToolColorButton", "color"),
-	Preference.new("right_tool_color", "Interface/ButtonOptions/RightToolColorButton", "color"),
 	Preference.new(
-		"tool_button_size", "Interface/ButtonOptions/ToolButtonSizeOptionButton", "selected"
+		"icon_color_from",
+		"Interface/ButtonOptions/IconColorOptionButton",
+		"selected",
+		Global.ColorFrom.THEME
 	),
 	Preference.new(
-		"show_left_tool_icon", "Cursors/CursorsContainer/LeftToolIconCheckbox", "button_pressed"
+		"custom_icon_color", "Interface/ButtonOptions/IconColorButton", "color", Color.GRAY
 	),
 	Preference.new(
-		"show_right_tool_icon", "Cursors/CursorsContainer/RightToolIconCheckbox", "button_pressed"
+		"left_tool_color", "Interface/ButtonOptions/LeftToolColorButton", "color", Color("0086cf")
+	),
+	Preference.new(
+		"right_tool_color", "Interface/ButtonOptions/RightToolColorButton", "color", Color("fd6d14")
+	),
+	Preference.new(
+		"tool_button_size",
+		"Interface/ButtonOptions/ToolButtonSizeOptionButton",
+		"selected",
+		Global.ButtonSize.SMALL
+	),
+	Preference.new(
+		"show_left_tool_icon",
+		"Cursors/CursorsContainer/LeftToolIconCheckbox",
+		"button_pressed",
+		true
+	),
+	Preference.new(
+		"show_right_tool_icon",
+		"Cursors/CursorsContainer/RightToolIconCheckbox",
+		"button_pressed",
+		true
 	),
 	Preference.new(
 		"left_square_indicator_visible",
 		"Cursors/CursorsContainer/LeftIndicatorCheckbox",
-		"button_pressed"
+		"button_pressed",
+		true
 	),
 	Preference.new(
 		"right_square_indicator_visible",
 		"Cursors/CursorsContainer/RightIndicatorCheckbox",
-		"button_pressed"
+		"button_pressed",
+		true
 	),
 	Preference.new(
-		"native_cursors", "Cursors/CursorsContainer/NativeCursorsCheckbox", "button_pressed"
+		"native_cursors", "Cursors/CursorsContainer/NativeCursorsCheckbox", "button_pressed", false
 	),
 	Preference.new(
-		"cross_cursor", "Cursors/CursorsContainer/CrossCursorCheckbox", "button_pressed"
+		"cross_cursor", "Cursors/CursorsContainer/CrossCursorCheckbox", "button_pressed", true
 	),
-	Preference.new("autosave_interval", "Backup/AutosaveContainer/AutosaveInterval", "value"),
-	Preference.new("enable_autosave", "Backup/AutosaveContainer/EnableAutosave", "button_pressed"),
-	Preference.new("default_width", "Image/ImageOptions/ImageDefaultWidth", "value"),
-	Preference.new("default_height", "Image/ImageOptions/ImageDefaultHeight", "value"),
-	Preference.new("default_fill_color", "Image/ImageOptions/DefaultFillColor", "color"),
-	Preference.new("smooth_zoom", "Canvas/ZoomOptions/SmoothZoom", "button_pressed"),
-	Preference.new("integer_zoom", "Canvas/ZoomOptions/IntegerZoom", "button_pressed"),
-	Preference.new("snapping_distance", "Canvas/SnappingOptions/DistanceValue", "value"),
-	Preference.new("grid_type", "Canvas/GridOptions/GridType", "selected"),
-	Preference.new("grid_size", "Canvas/GridOptions/GridSizeValue", "value"),
-	Preference.new("isometric_grid_size", "Canvas/GridOptions/IsometricGridSizeValue", "value"),
-	Preference.new("grid_offset", "Canvas/GridOptions/GridOffsetValue", "value"),
+	Preference.new("autosave_interval", "Backup/AutosaveContainer/AutosaveInterval", "value", 1.0),
 	Preference.new(
-		"grid_draw_over_tile_mode", "Canvas/GridOptions/GridDrawOverTileMode", "button_pressed"
+		"enable_autosave", "Backup/AutosaveContainer/EnableAutosave", "button_pressed", true
 	),
-	Preference.new("grid_color", "Canvas/GridOptions/GridColor", "color"),
-	Preference.new("pixel_grid_show_at_zoom", "Canvas/PixelGridOptions/ShowAtZoom", "value"),
-	Preference.new("pixel_grid_color", "Canvas/PixelGridOptions/GridColor", "color"),
-	Preference.new("guide_color", "Canvas/GuideOptions/GuideColor", "color"),
-	Preference.new("checker_size", "Canvas/CheckerOptions/CheckerSizeValue", "value"),
-	Preference.new("checker_color_1", "Canvas/CheckerOptions/CheckerColor1", "color"),
-	Preference.new("checker_color_2", "Canvas/CheckerOptions/CheckerColor2", "color"),
+	Preference.new("default_width", "Image/ImageOptions/ImageDefaultWidth", "value", 64),
+	Preference.new("default_height", "Image/ImageOptions/ImageDefaultHeight", "value", 64),
+	Preference.new("default_fill_color", "Image/ImageOptions/DefaultFillColor", "color", Color(0)),
+	Preference.new("smooth_zoom", "Canvas/ZoomOptions/SmoothZoom", "button_pressed", true),
+	Preference.new("integer_zoom", "Canvas/ZoomOptions/IntegerZoom", "button_pressed", false),
+	Preference.new("snapping_distance", "Canvas/SnappingOptions/DistanceValue", "value", 32.0),
 	Preference.new(
-		"checker_follow_movement", "Canvas/CheckerOptions/CheckerFollowMovement", "button_pressed"
+		"grid_type", "Canvas/GridOptions/GridType", "selected", Global.GridTypes.CARTESIAN
+	),
+	Preference.new("grid_size", "Canvas/GridOptions/GridSizeValue", "value", Vector2i(2, 2)),
+	Preference.new(
+		"isometric_grid_size", "Canvas/GridOptions/IsometricGridSizeValue", "value", Vector2i(16, 8)
+	),
+	Preference.new("grid_offset", "Canvas/GridOptions/GridOffsetValue", "value", Vector2i.ZERO),
+	Preference.new(
+		"grid_draw_over_tile_mode",
+		"Canvas/GridOptions/GridDrawOverTileMode",
+		"button_pressed",
+		false
+	),
+	Preference.new("grid_color", "Canvas/GridOptions/GridColor", "color", Color.BLACK),
+	Preference.new(
+		"pixel_grid_show_at_zoom", "Canvas/PixelGridOptions/ShowAtZoom", "value", 1500.0
 	),
 	Preference.new(
-		"checker_follow_scale", "Canvas/CheckerOptions/CheckerFollowScale", "button_pressed"
+		"pixel_grid_color", "Canvas/PixelGridOptions/GridColor", "color", Color("21212191")
 	),
-	Preference.new("tilemode_opacity", "Canvas/CheckerOptions/TileModeOpacity", "value"),
-	Preference.new("clear_color_from", "Canvas/BackgroundOptions/ColorOptionButton", "selected"),
-	Preference.new("modulate_clear_color", "Canvas/BackgroundOptions/BackgroundColor", "color"),
+	Preference.new("guide_color", "Canvas/GuideOptions/GuideColor", "color", Color.PURPLE),
+	Preference.new("checker_size", "Canvas/CheckerOptions/CheckerSizeValue", "value", 10),
+	Preference.new(
+		"checker_color_1",
+		"Canvas/CheckerOptions/CheckerColor1",
+		"color",
+		Color(0.47, 0.47, 0.47, 1)
+	),
+	Preference.new(
+		"checker_color_2",
+		"Canvas/CheckerOptions/CheckerColor2",
+		"color",
+		Color(0.34, 0.35, 0.34, 1)
+	),
+	Preference.new(
+		"checker_follow_movement",
+		"Canvas/CheckerOptions/CheckerFollowMovement",
+		"button_pressed",
+		false
+	),
+	Preference.new(
+		"checker_follow_scale", "Canvas/CheckerOptions/CheckerFollowScale", "button_pressed", false
+	),
+	Preference.new("tilemode_opacity", "Canvas/CheckerOptions/TileModeOpacity", "value", 1.0),
+	Preference.new(
+		"clear_color_from",
+		"Canvas/BackgroundOptions/ColorOptionButton",
+		"selected",
+		Global.ColorFrom.THEME
+	),
+	Preference.new(
+		"modulate_clear_color", "Canvas/BackgroundOptions/BackgroundColor", "color", Color.GRAY
+	),
 	Preference.new(
 		"select_layer_on_button_click",
 		"Timeline/TimelineOptions/SelectLayerOnButton",
-		"button_pressed"
+		"button_pressed",
+		false
 	),
 	Preference.new(
-		"onion_skinning_past_color", "Timeline/TimelineOptions/OnionSkinningPastColor", "color"
+		"onion_skinning_past_color",
+		"Timeline/TimelineOptions/OnionSkinningPastColor",
+		"color",
+		Color.RED
 	),
 	Preference.new(
-		"onion_skinning_future_color", "Timeline/TimelineOptions/OnionSkinningFutureColor", "color"
+		"onion_skinning_future_color",
+		"Timeline/TimelineOptions/OnionSkinningFutureColor",
+		"color",
+		Color.BLUE
 	),
 	Preference.new(
-		"selection_animated_borders", "Selection/SelectionOptions/Animate", "button_pressed"
+		"selection_animated_borders", "Selection/SelectionOptions/Animate", "button_pressed", true
 	),
-	Preference.new("selection_border_color_1", "Selection/SelectionOptions/BorderColor1", "color"),
-	Preference.new("selection_border_color_2", "Selection/SelectionOptions/BorderColor2", "color"),
-	Preference.new("fps_limit", "Performance/PerformanceContainer/SetFPSLimit", "value"),
 	Preference.new(
-		"pause_when_unfocused", "Performance/PerformanceContainer/PauseAppFocus", "button_pressed"
+		"selection_border_color_1", "Selection/SelectionOptions/BorderColor1", "color", Color.WHITE
+	),
+	Preference.new(
+		"selection_border_color_2", "Selection/SelectionOptions/BorderColor2", "color", Color.BLACK
+	),
+	Preference.new("fps_limit", "Performance/PerformanceContainer/SetFPSLimit", "value", 0),
+	Preference.new(
+		"pause_when_unfocused",
+		"Performance/PerformanceContainer/PauseAppFocus",
+		"button_pressed",
+		true
 	),
 	Preference.new(
 		"window_transparency",
 		"Performance/PerformanceContainer/WindowTransparency",
 		"button_pressed",
-		true,
-		false
+		false,
+		true
 	),
-	#	Preference.new(
-	#		"renderer", "Drivers/DriversContainer/Renderer", "selected", true, OS.VIDEO_DRIVER_GLES2
-	#	),
-	Preference.new("tablet_driver", "Drivers/DriversContainer/TabletDriver", "selected", true, 0)
+	Preference.new("tablet_driver", "Drivers/DriversContainer/TabletDriver", "selected", 0)
 ]
 
-var content_list := []
+var content_list := PackedStringArray([])
 var selected_item := 0
 
 @onready var list: ItemList = $HSplitContainer/List
 @onready var right_side: VBoxContainer = $"%RightSide"
+@onready var language: VBoxContainer = %Language
 @onready var autosave_container: Container = right_side.get_node("Backup/AutosaveContainer")
 @onready var autosave_interval: SpinBox = autosave_container.get_node("AutosaveInterval")
-@onready var shrink_slider: ValueSlider = $"%ShrinkSlider"
 @onready var themes: BoxContainer = right_side.get_node("Interface/Themes")
 @onready var shortcuts: Control = right_side.get_node("Shortcuts/ShortcutEdit")
 @onready var tablet_driver_label: Label = $"%TabletDriverLabel"
@@ -134,15 +205,15 @@ class Preference:
 	var prop_name: String
 	var node_path: String
 	var value_type: String
-	var require_restart := false
 	var default_value
+	var require_restart := false
 
 	func _init(
 		_prop_name: String,
 		_node_path: String,
 		_value_type: String,
-		_require_restart := false,
-		_default_value = null
+		_default_value = null,
+		_require_restart := false
 	) -> void:
 		prop_name = _prop_name
 		node_path = _node_path
@@ -158,7 +229,6 @@ func _ready() -> void:
 	# Replace OK since preference changes are being applied immediately, not after OK confirmation
 	get_ok_button().text = "Close"
 	get_ok_button().size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	shrink_slider.value = Global.shrink  # In case shrink is not equal to 1
 
 	shortcuts.profile_option_button.item_selected.connect(func(_i): Tools.update_hint_tooltips())
 	if shortcuts.profile_option_button.selected != 0:
@@ -169,22 +239,46 @@ func _ready() -> void:
 			continue
 		child.confirmed.connect(Tools.update_hint_tooltips)
 
-	for child in right_side.get_children():
-		content_list.append(child.name)
-
 	if OS.get_name() == "Web":
-		content_list.erase("Startup")
-		right_side.get_node("Startup").queue_free()
-		right_side.get_node("Language").visible = true
+		var startup := right_side.get_node(^"Startup")
+		right_side.remove_child(startup)
+		startup.queue_free()
+		right_side.get_node(^"Language").visible = true
 		Global.open_last_project = false
-	elif OS.get_name() == "Windows":
+	if OS.get_name() == "Windows":
 		tablet_driver_label.visible = true
 		tablet_driver.visible = true
 		for driver in DisplayServer.tablet_get_driver_count():
 			var driver_name := DisplayServer.tablet_get_driver_name(driver)
 			tablet_driver.add_item(driver_name, driver)
+	else:
+		var drivers := right_side.get_node(^"Drivers")
+		right_side.remove_child(drivers)
+		drivers.queue_free()
+	if not OS.has_feature("pc"):
+		get_tree().call_group(&"DesktopOnly", &"queue_free")
+
+	for child in right_side.get_children():
+		content_list.append(child.name)
+
+	# Create buttons for each language
+	var system_language := language.get_node(^"System Language") as Button
+	var button_group: ButtonGroup = system_language.button_group
+	for locale in Global.loaded_locales:  # Create radiobuttons for each language
+		var button := CheckBox.new()
+		button.text = Global.LANGUAGES_DICT[locale][0] + " [%s]" % [locale]
+		button.name = Global.LANGUAGES_DICT[locale][1]
+		button.tooltip_text = Global.LANGUAGES_DICT[locale][1]
+		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		button.button_group = button_group
+		if locale == TranslationServer.get_locale():
+			button.button_pressed = true
+		language.add_child(button)
+		button.pressed.connect(_on_language_pressed.bind(button.get_index()))
 
 	for pref in preferences:
+		if not right_side.has_node(pref.node_path):
+			continue
 		var node := right_side.get_node(pref.node_path)
 		var restore_default_button := RestoreDefaultButton.new()
 		restore_default_button.setting_name = pref.prop_name
@@ -192,7 +286,7 @@ func _ready() -> void:
 		restore_default_button.default_value = pref.default_value
 		restore_default_button.require_restart = pref.require_restart
 		restore_default_button.node = node
-		if pref.node_path == "%ShrinkSlider":
+		if pref.node_path in ["%ShrinkSlider", "%FontSizeSlider"]:
 			# Add the default button to the shrink slider's grandparent
 			var node_position := node.get_parent().get_index()
 			node.get_parent().get_parent().add_child(restore_default_button)
@@ -225,34 +319,13 @@ func _ready() -> void:
 					_on_Preference_value_changed.bind(pref, restore_default_button)
 				)
 
-		var global_value = Global.get(pref.prop_name)
-		if Global.config_cache.has_section_key("preferences", pref.prop_name):
-			var value = Global.config_cache.get_value("preferences", pref.prop_name)
-			Global.set(pref.prop_name, value)
-			node.set(pref.value_type, value)
-			global_value = Global.get(pref.prop_name)
-
-			# This is needed because color_changed doesn't fire if the color changes in code
-			if typeof(value) == TYPE_VECTOR2 or typeof(value) == TYPE_COLOR:
-				preference_update(pref.require_restart)
-				if typeof(global_value) == TYPE_VECTOR2I:
-					disable_restore_default_button(
-						restore_default_button, global_value == pref.default_value
-					)
-				else:
-					disable_restore_default_button(
-						restore_default_button, global_value.is_equal_approx(pref.default_value)
-					)
-			elif pref.value_type == "selected":
-				preference_update(pref.require_restart)
-				disable_restore_default_button(
-					restore_default_button, global_value == pref.default_value
-				)
-		else:
-			node.set(pref.value_type, global_value)
-			disable_restore_default_button(
-				restore_default_button, global_value == pref.default_value
-			)
+		var value = Global.get(pref.prop_name)
+		node.set(pref.value_type, value)
+		var is_default: bool = value == pref.default_value
+		# This is needed because color_changed doesn't fire if the color changes in code
+		if typeof(value) == TYPE_VECTOR2 or typeof(value) == TYPE_COLOR:
+			is_default = value.is_equal_approx(pref.default_value)
+		disable_restore_default_button(restore_default_button, is_default)
 
 
 func _on_Preference_value_changed(value, pref: Preference, button: RestoreDefaultButton) -> void:
@@ -301,7 +374,7 @@ func _on_PreferencesDialog_visibility_changed() -> void:
 	if not visible:
 		list.clear()
 		Global.dialog_open(false)
-		Global.config_cache.save("user://cache.ini")
+		Global.config_cache.save(Global.CONFIG_PATH)
 
 
 func _on_List_item_selected(index: int) -> void:
@@ -310,7 +383,7 @@ func _on_List_item_selected(index: int) -> void:
 		child.visible = child.name == content_list[index]
 
 
-func _on_ShrinkApplyButton_pressed() -> void:
+func _on_shrink_apply_button_pressed() -> void:
 	var root := get_tree().root
 	root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_IGNORE
 	root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
@@ -322,3 +395,22 @@ func _on_ShrinkApplyButton_pressed() -> void:
 	Global.dialog_open(true)
 	await get_tree().process_frame
 	Global.camera.fit_to_frame(Global.current_project.size)
+
+
+func _on_font_size_apply_button_pressed() -> void:
+	Global.control.theme.default_font_size = Global.font_size
+	Global.control.theme.set_font_size("font_size", "HeaderSmall", Global.font_size + 2)
+
+
+func _on_language_pressed(index: int) -> void:
+	var locale := OS.get_locale()
+	if index > 1:
+		locale = Global.loaded_locales[index - 2]
+	Global.set_locale(locale)
+	Global.config_cache.set_value("preferences", "locale", TranslationServer.get_locale())
+	Global.config_cache.save(Global.CONFIG_PATH)
+
+	# Update some UI elements with the new translations
+	Tools.update_hint_tooltips()
+	list.clear()
+	add_tabs(true)

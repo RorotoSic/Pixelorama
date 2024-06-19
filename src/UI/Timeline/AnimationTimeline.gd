@@ -35,7 +35,7 @@ var layer_effect_settings: AcceptDialog:
 @onready var move_down_layer := %MoveDownLayer as Button
 @onready var merge_down_layer := %MergeDownLayer as Button
 @onready var blend_modes_button := %BlendModes as OptionButton
-@onready var opacity_slider: ValueSlider = %OpacitySlider
+@onready var opacity_slider := %OpacitySlider as ValueSlider
 @onready var frame_scroll_container := %FrameScrollContainer as Control
 @onready var frame_scroll_bar := %FrameScrollBar as HScrollBar
 @onready var tag_scroll_container := %TagScroll as ScrollContainer
@@ -47,15 +47,20 @@ var layer_effect_settings: AcceptDialog:
 @onready var play_forward := %PlayForward as Button
 @onready var fps_spinbox := %FPSValue as ValueSlider
 @onready var onion_skinning_button := %OnionSkinning as BaseButton
-@onready var onion_skinning_settings := $OnionSkinningSettings as Popup
+@onready var timeline_settings := $TimelineSettings as Popup
+@onready var cel_size_slider := %CelSizeSlider as ValueSlider
 @onready var loop_animation_button := %LoopAnim as BaseButton
 @onready var drag_highlight := $DragHighlight as ColorRect
 
 
 func _ready() -> void:
+	Global.control.find_child("LayerProperties").visibility_changed.connect(_update_layer_ui)
 	min_cel_size = get_tree().current_scene.theme.default_font_size + 24
 	layer_container.custom_minimum_size.x = layer_settings_container.size.x + 12
 	cel_size = min_cel_size
+	cel_size_slider.min_value = min_cel_size
+	cel_size_slider.max_value = max_cel_size
+	cel_size_slider.value = cel_size
 	add_layer_list.get_popup().id_pressed.connect(add_layer)
 	frame_scroll_bar.value_changed.connect(_frame_scroll_changed)
 	Global.animation_timer.wait_time = 1 / Global.current_project.fps
@@ -122,12 +127,27 @@ func _ready() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_DRAG_END:
 		drag_highlight.hide()
-	elif what == NOTIFICATION_THEME_CHANGED:
+	elif what == NOTIFICATION_THEME_CHANGED or what == NOTIFICATION_TRANSLATION_CHANGED:
+		await get_tree().process_frame
 		if is_instance_valid(layer_settings_container):
 			layer_container.custom_minimum_size.x = layer_settings_container.size.x + 12
 
 
 func _input(event: InputEvent) -> void:
+	var project := Global.current_project
+	if event.is_action_pressed("go_to_previous_layer"):
+		project.selected_cels.clear()
+		if project.current_layer > 0:
+			project.change_cel(-1, project.current_layer - 1)
+		else:
+			project.change_cel(-1, project.layers.size() - 1)
+	elif event.is_action_pressed("go_to_next_layer"):
+		project.selected_cels.clear()
+		if project.current_layer < project.layers.size() - 1:
+			project.change_cel(-1, project.current_layer + 1)
+		else:
+			project.change_cel(-1, 0)
+
 	var mouse_pos := get_global_mouse_position()
 	var timeline_rect := Rect2(global_position, size)
 	if timeline_rect.has_point(mouse_pos):
@@ -179,6 +199,7 @@ func _cel_size_changed(value: int) -> void:
 	if cel_size == value:
 		return
 	cel_size = clampi(value, min_cel_size, max_cel_size)
+	cel_size_slider.value = cel_size
 	update_minimum_size()
 	Global.config_cache.set_value("timeline", "cel_size", cel_size)
 	for layer_button: Control in Global.layer_vbox.get_children():
@@ -196,12 +217,7 @@ func _cel_size_changed(value: int) -> void:
 		frame_id.size.x = cel_size
 
 	for tag_c: Control in Global.tag_container.get_children():
-		var tag: AnimationTag = tag_c.tag
-		tag_c.position = tag.get_position()
-		tag_c.custom_minimum_size.x = tag.get_minimum_size()
-		tag_c.size.x = tag_c.custom_minimum_size.x
-		tag_c.get_node("Line2D").points[2] = Vector2(tag_c.custom_minimum_size.x, 0)
-		tag_c.get_node("Line2D").points[3] = Vector2(tag_c.custom_minimum_size.x, 32)
+		tag_c.update_position_and_size()
 
 
 func _on_blend_modes_item_selected(index: int) -> void:
@@ -278,7 +294,7 @@ func _on_DeleteFrame_pressed() -> void:
 	delete_frames()
 
 
-func delete_frames(indices := []) -> void:
+func delete_frames(indices: PackedInt32Array = []) -> void:
 	var project := Global.current_project
 	if project.frames.size() == 1:
 		return
@@ -480,23 +496,52 @@ func copy_frames(
 	project.undo_redo.commit_action()
 
 
-func _on_FrameTagButton_pressed() -> void:
-	find_child("FrameTagDialog").popup_centered()
-
-
 func _on_MoveLeft_pressed() -> void:
 	if Global.current_project.current_frame == 0:
 		return
-	Global.frame_hbox.get_child(Global.current_project.current_frame).change_frame_order(-1)
+	move_frames(Global.current_project.current_frame, -1)
 
 
 func _on_MoveRight_pressed() -> void:
 	if Global.current_project.current_frame == Global.current_project.frames.size() - 1:
 		return
-	Global.frame_hbox.get_child(Global.current_project.current_frame).change_frame_order(1)
+	move_frames(Global.current_project.current_frame, 1)
 
 
-func reverse_frames(indices := []) -> void:
+func move_frames(frame: int, rate: int) -> void:
+	var project := Global.current_project
+	var frame_indices: PackedInt32Array = []
+	var moved_frame_indices: PackedInt32Array = []
+	for cel in project.selected_cels:
+		var frame_index: int = cel[0]
+		if not frame_indices.has(frame_index):
+			frame_indices.append(frame_index)
+			moved_frame_indices.append(frame_index + rate)
+	frame_indices.sort()
+	moved_frame_indices.sort()
+	if not frame in frame_indices:
+		frame_indices = [frame]
+		moved_frame_indices = [frame + rate]
+	for moved_index in moved_frame_indices:
+		# Don't allow frames to be moved if they are out of bounds
+		if moved_index < 0 or moved_index >= project.frames.size():
+			return
+	project.undo_redo.create_action("Change Frame Order")
+	project.undo_redo.add_do_method(project.move_frames.bind(frame_indices, moved_frame_indices))
+	project.undo_redo.add_undo_method(project.move_frames.bind(moved_frame_indices, frame_indices))
+
+	if project.current_frame in frame_indices:
+		project.undo_redo.add_do_method(project.change_cel.bind(frame + rate))
+	else:
+		project.undo_redo.add_do_method(project.change_cel.bind(project.current_frame))
+
+	project.undo_redo.add_undo_method(project.change_cel.bind(project.current_frame))
+	project.undo_redo.add_undo_method(Global.undo_or_redo.bind(true))
+	project.undo_redo.add_do_method(Global.undo_or_redo.bind(false))
+	project.undo_redo.commit_action()
+
+
+func reverse_frames(indices: PackedInt32Array = []) -> void:
 	var project := Global.current_project
 	project.undo_redo.create_action("Change Frame Order")
 	project.undo_redo.add_do_method(project.reverse_frames.bind(indices))
@@ -516,9 +561,9 @@ func _on_OnionSkinning_pressed() -> void:
 		Global.change_button_texturerect(texture_button, "onion_skinning_off.png")
 
 
-func _on_OnionSkinningSettings_pressed() -> void:
-	var pos := Vector2i(onion_skinning_button.global_position) - onion_skinning_settings.size
-	onion_skinning_settings.popup(Rect2i(pos.x - 16, pos.y + 32, 136, 126))
+func _on_timeline_settings_button_pressed() -> void:
+	var pos := Vector2i(onion_skinning_button.global_position) - timeline_settings.size
+	timeline_settings.popup(Rect2i(pos.x - 16, pos.y + 32, 136, 126))
 
 
 func _on_LoopAnim_pressed() -> void:
@@ -720,6 +765,10 @@ func _on_BlueRedMode_toggled(button_pressed: bool) -> void:
 	Global.canvas.queue_redraw()
 
 
+func _on_play_only_tags_toggled(toggled_on: bool) -> void:
+	Global.play_only_tags = toggled_on
+
+
 func _on_PastPlacement_item_selected(index: int) -> void:
 	past_above_canvas = (index == 0)
 	Global.config_cache.set_value("timeline", "past_above_canvas", past_above_canvas)
@@ -830,7 +879,9 @@ func _on_CloneLayer_pressed() -> void:
 		else:  # Add (Copy) to the name if its not a child of another copied layer
 			cl_layer.name = str(cl_layer.name, " (", tr("copy"), ")")
 
-	var indices := range(project.current_layer + 1, project.current_layer + clones.size() + 1)
+	var indices: PackedInt32Array = range(
+		project.current_layer + 1, project.current_layer + clones.size() + 1
+	)
 
 	project.undos += 1
 	project.undo_redo.create_action("Add Layer")
@@ -879,7 +930,7 @@ func change_layer_order(up: bool) -> void:
 	var project := Global.current_project
 	var layer := project.layers[project.current_layer]
 	var child_count := layer.get_child_count(true)
-	var from_indices := range(layer.index - child_count, layer.index + 1)
+	var from_indices: PackedInt32Array = range(layer.index - child_count, layer.index + 1)
 	var from_parents := []
 	for l in from_indices:
 		from_parents.append(project.layers[l].parent)
@@ -916,7 +967,7 @@ func change_layer_order(up: bool) -> void:
 			else:
 				to_index = to_index - 1
 
-	var to_indices := range(to_index, to_index + child_count + 1)
+	var to_indices: PackedInt32Array = range(to_index, to_index + child_count + 1)
 
 	project.undo_redo.create_action("Change Layer Order")
 	project.undo_redo.add_do_method(project.move_layers.bind(from_indices, to_indices, to_parents))
@@ -940,7 +991,6 @@ func _on_MergeDownLayer_pressed() -> void:
 
 	project.undos += 1
 	project.undo_redo.create_action("Merge Layer")
-
 	for frame in project.frames:
 		var top_cel := frame.cels[top_layer.index]
 		top_cels.append(top_cel)  # Store for undo purposes
@@ -992,6 +1042,7 @@ func _on_MergeDownLayer_pressed() -> void:
 	project.undo_redo.add_undo_method(Global.undo_or_redo.bind(true))
 	project.undo_redo.add_do_method(Global.undo_or_redo.bind(false))
 	project.undo_redo.commit_action()
+	bottom_layer.visible = true
 
 
 func _on_OpacitySlider_value_changed(value: float) -> void:
@@ -1002,12 +1053,12 @@ func _on_OpacitySlider_value_changed(value: float) -> void:
 	Global.canvas.queue_redraw()
 
 
-func _on_onion_skinning_settings_close_requested() -> void:
-	onion_skinning_settings.hide()
+func _on_timeline_settings_close_requested() -> void:
+	timeline_settings.hide()
 
 
-func _on_onion_skinning_settings_visibility_changed() -> void:
-	Global.can_draw = not onion_skinning_settings.visible
+func _on_timeline_settings_visibility_changed() -> void:
+	Global.can_draw = not timeline_settings.visible
 
 
 # Methods to update the UI in response to changes in the current project
@@ -1016,6 +1067,10 @@ func _on_onion_skinning_settings_visibility_changed() -> void:
 func _cel_switched() -> void:
 	_toggle_frame_buttons()
 	_toggle_layer_buttons()
+	_update_layer_ui()
+
+
+func _update_layer_ui() -> void:
 	var project := Global.current_project
 	var layer_opacity := project.layers[project.current_layer].opacity
 	opacity_slider.value = layer_opacity * 100
@@ -1175,3 +1230,7 @@ func project_cel_removed(frame: int, layer: int) -> void:
 func _on_layer_fx_pressed() -> void:
 	layer_effect_settings.popup_centered()
 	Global.dialog_open(true)
+
+
+func _on_cel_size_slider_value_changed(value: float) -> void:
+	cel_size = value

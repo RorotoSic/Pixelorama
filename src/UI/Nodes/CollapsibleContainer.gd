@@ -26,6 +26,8 @@ func _init() -> void:
 
 
 func _ready() -> void:
+	if name.is_empty():
+		name = "CollapsibleContainer"
 	_button.flat = flat
 	_button.toggle_mode = true
 	_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -66,6 +68,11 @@ func set_visible_children(pressed: bool) -> void:
 		if not child is CanvasItem or child == _button:
 			continue
 		child.visible = pressed
+
+
+## Returns [member _button].
+func get_button() -> Button:
+	return _button
 
 
 ## Checks if a child becomes visible from another sure and ensures

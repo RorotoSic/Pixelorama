@@ -2,11 +2,11 @@
 shader_type canvas_item;
 render_mode unshaded;
 
-uniform sampler2D selection_tex;
+uniform sampler2D selection_tex : filter_nearest;
 uniform float initial_angle = 0.0;
 uniform float ending_angle = 0.0;
 uniform float tolerance : hint_range(0.0, 255.0) = 100.0;
-uniform vec2 origin = vec2(0.0, 0.0);
+uniform vec2 pivot = vec2(0.0, 0.0);
 uniform vec2 position = vec2(0.0, 0.0);
 
 bool similarColors(vec4 c1, vec4 c2) {
@@ -16,7 +16,7 @@ bool similarColors(vec4 c1, vec4 c2) {
 
 vec4 rotate(sampler2D tex, vec2 uv, vec2 tex_pixel_size) {
 	vec4 color = vec4(0.0);
-	vec2 center = origin / tex_pixel_size;
+	vec2 center = pivot / tex_pixel_size;
 	vec2 size = 1.0 / tex_pixel_size;
 	vec2 coord = uv / tex_pixel_size + position;
 	int dx = 3 * (int(coord.x) - int(center.x));
@@ -26,15 +26,13 @@ vec4 rotate(sampler2D tex, vec2 uv, vec2 tex_pixel_size) {
 	float dir;
 	float mag;
 	float init_angle = initial_angle < ending_angle ? initial_angle : ending_angle;
-	for (float angle = ending_angle; angle >= init_angle && color.a == 0.0; angle -= 1.0) {
-		float ang = angle*3.1416/180.0;
-
+	for (float angle = ending_angle; angle >= init_angle && color.a <= 0.0001; angle -= 0.0174) {
 		for (int k = 0; k < 9; k++) {
 			int i = -1 + int(k % 3);
 			int j = -1 + k / 3;
 			dir = atan(float(dy + j), float(dx + i));
 			mag = sqrt(pow(float(dx + i), 2.0) + pow(float(dy + j), 2.0));
-			dir -= ang;
+			dir -= angle;
 			ox = int(round(3.0 * center.x + 1.0 + mag * cos(dir)));
 			oy = int(round(3.0 * center.y + 1.0 + mag * sin(dir)));
 
@@ -115,7 +113,7 @@ vec4 rotate(sampler2D tex, vec2 uv, vec2 tex_pixel_size) {
 // The exact same as rotate, but had to be re-defined due to https://github.com/godotengine/godot/issues/75935
 vec4 rotate_uniform(sampler2D tex, vec2 uv, vec2 tex_pixel_size) {
 	vec4 color = vec4(0.0);
-	vec2 center = origin / tex_pixel_size;
+	vec2 center = pivot / tex_pixel_size;
 	vec2 size = 1.0 / tex_pixel_size;
 	vec2 coord = uv / tex_pixel_size + position;
 	int dx = 3 * (int(coord.x) - int(center.x));
@@ -125,15 +123,13 @@ vec4 rotate_uniform(sampler2D tex, vec2 uv, vec2 tex_pixel_size) {
 	float dir;
 	float mag;
 	float init_angle = initial_angle < ending_angle ? initial_angle : ending_angle;
-	for (float angle = ending_angle; angle >= init_angle && color.a == 0.0; angle -= 1.0) {
-		float ang = angle*3.1416/180.0;
-
+	for (float angle = ending_angle; angle >= init_angle && color.a <= 0.0001; angle -= 0.0174) {
 		for (int k = 0; k < 9; k++) {
 			int i = -1 + int(k % 3);
 			int j = -1 + k / 3;
 			dir = atan(float(dy + j), float(dx + i));
 			mag = sqrt(pow(float(dx + i), 2.0) + pow(float(dy + j), 2.0));
-			dir -= ang;
+			dir -= angle;
 			ox = int(round(3.0 * center.x + 1.0 + mag * cos(dir)));
 			oy = int(round(3.0 * center.y + 1.0 + mag * sin(dir)));
 

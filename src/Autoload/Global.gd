@@ -12,10 +12,6 @@ signal project_about_to_switch  ## Emitted before a project is about to be switc
 signal project_switched  ## Emitted whenever you switch to some other project tab.
 signal cel_switched  ## Emitted whenever you select a different cel.
 signal project_data_changed(project: Project)  ## Emitted when project data is modified.
-## Emitted when the theme is switched. Unlike [signal Control.theme_changed],
-## this doesn't get emitted when a stylebox of a control changes, only when the
-## main theme gets switched to another.
-signal theme_switched
 
 enum LayerTypes { PIXEL, GROUP, THREE_D }
 enum GridTypes { CARTESIAN, ISOMETRIC, ALL }
@@ -47,11 +43,15 @@ enum ViewMenu {
 enum WindowMenu { WINDOW_OPACITY, PANELS, LAYOUTS, MOVABLE_PANELS, ZEN_MODE, FULLSCREEN_MODE }
 ##  Enumeration of items present in the Image Menu.
 enum ImageMenu {
+	PROJECT_PROPERTIES,
 	RESIZE_CANVAS,
-	OFFSET_IMAGE,
 	SCALE_IMAGE,
 	CROP_TO_SELECTION,
 	CROP_TO_CONTENT,
+}
+## Enumeration of items present in the Effects menu.
+enum EffectsMenu {
+	OFFSET_IMAGE,
 	FLIP,
 	ROTATE,
 	OUTLINE,
@@ -59,6 +59,8 @@ enum ImageMenu {
 	INVERT_COLORS,
 	DESATURATION,
 	HSV,
+	PALETTIZE,
+	PIXELIZE,
 	POSTERIZE,
 	GRADIENT,
 	GRADIENT_MAP,
@@ -77,6 +79,35 @@ enum HelpMenu {
 	SUPPORT_PIXELORAMA
 }
 
+const LANGUAGES_DICT := {
+	"en_US": ["English", "English"],
+	"cs_CZ": ["Czech", "Czech"],
+	"da_DK": ["Dansk", "Danish"],
+	"de_DE": ["Deutsch", "German"],
+	"el_GR": ["Ελληνικά", "Greek"],
+	"eo_UY": ["Esperanto", "Esperanto"],
+	"es_ES": ["Español", "Spanish"],
+	"fr_FR": ["Français", "French"],
+	"id_ID": ["Indonesian", "Indonesian"],
+	"it_IT": ["Italiano", "Italian"],
+	"lv_LV": ["Latvian", "Latvian"],
+	"pl_PL": ["Polski", "Polish"],
+	"pt_BR": ["Português Brasileiro", "Brazilian Portuguese"],
+	"pt_PT": ["Português", "Portuguese"],
+	"ru_RU": ["Русский", "Russian"],
+	"zh_CN": ["简体中文", "Chinese Simplified"],
+	"zh_TW": ["繁體中文", "Chinese Traditional"],
+	"nb_NO": ["Norsk Bokmål", "Norwegian Bokmål"],
+	"hu_HU": ["Magyar", "Hungarian"],
+	"ro_RO": ["Română", "Romanian"],
+	"ko_KR": ["한국어", "Korean"],
+	"tr_TR": ["Türkçe", "Turkish"],
+	"ja_JP": ["日本語", "Japanese"],
+	"uk_UA": ["Українська", "Ukrainian"],
+}
+
+## The file path used for the [member config_cache] file.
+const CONFIG_PATH := "user://config.ini"
 ## The file used to save preferences that use [code]ProjectSettings.save_custom()[/code].
 const OVERRIDE_FILE := "override.cfg"
 ## The name of folder containing Pixelorama preferences.
@@ -99,6 +130,7 @@ var home_data_directory := OS.get_data_dir().path_join(HOME_SUBDIR_NAME)
 var data_directories: PackedStringArray = [home_data_directory]
 ## The config file used to get/set preferences, tool settings etc.
 var config_cache := ConfigFile.new()
+var loaded_locales: PackedStringArray = LANGUAGES_DICT.keys()
 
 var projects: Array[Project] = []  ## Array of currently open projects.
 var current_project: Project  ## The project that currently in focus.
@@ -164,13 +196,7 @@ var integer_zoom := false:
 ## Found in Preferences. The scale of the interface.
 var shrink := 1.0
 ## Found in Preferences. The font size used by the interface.
-var font_size := 16:
-	set(value):
-		if font_size == value:
-			return
-		font_size = value
-		control.theme.default_font_size = value
-		control.theme.set_font_size("font_size", "HeaderSmall", value + 2)
+var font_size := 16
 ## Found in Preferences. If [code]true[/code], the interface dims on popups.
 var dim_on_popup := true
 ## Found in Preferences. If [code]true[/code], the native file dialogs of the
@@ -200,13 +226,12 @@ var icon_color_from := ColorFrom.THEME:
 		if value == icon_color_from:
 			return
 		icon_color_from = value
-		var themes = preferences_dialog.themes
 		if icon_color_from == ColorFrom.THEME:
-			var current_theme: Theme = themes.themes[themes.theme_index]
+			var current_theme := Themes.themes[Themes.theme_index]
 			modulate_icon_color = current_theme.get_color("modulate_color", "Icons")
 		else:
 			modulate_icon_color = custom_icon_color
-		themes.change_icon_colors()
+		Themes.change_icon_colors()
 ## Found in Preferences. Color of icons when [member icon_color_from] is set to use custom colors.
 var custom_icon_color := Color.GRAY:
 	set(value):
@@ -215,7 +240,7 @@ var custom_icon_color := Color.GRAY:
 		custom_icon_color = value
 		if icon_color_from == ColorFrom.CUSTOM:
 			modulate_icon_color = custom_icon_color
-			preferences_dialog.themes.change_icon_colors()
+			Themes.change_icon_colors()
 ## Found in Preferences. The modulation color (or simply color) of canvas background
 ## (aside from checker background).
 var modulate_clear_color := Color.GRAY:
@@ -223,14 +248,14 @@ var modulate_clear_color := Color.GRAY:
 		if value == modulate_clear_color:
 			return
 		modulate_clear_color = value
-		preferences_dialog.themes.change_clear_color()
+		Themes.change_clear_color()
 ## Found in Preferences. Determines if [member modulate_clear_color] uses custom or theme color.
 var clear_color_from := ColorFrom.THEME:
 	set(value):
 		if value == clear_color_from:
 			return
 		clear_color_from = value
-		preferences_dialog.themes.change_clear_color()
+		Themes.change_clear_color()
 ## Found in Preferences. The selected size mode of tool buttons using [enum ButtonSize] enum.
 var tool_button_size := ButtonSize.SMALL:
 	set(value):
@@ -244,6 +269,8 @@ var left_tool_color := Color("0086cf"):
 		if value == left_tool_color:
 			return
 		left_tool_color = value
+		if not is_instance_valid(Tools._tool_buttons):
+			await get_tree().process_frame
 		for child in Tools._tool_buttons.get_children():
 			var background: NinePatchRect = child.get_node("BackgroundLeft")
 			background.modulate = value
@@ -254,6 +281,8 @@ var right_tool_color := Color("fd6d14"):
 		if value == right_tool_color:
 			return
 		right_tool_color = value
+		if not is_instance_valid(Tools._tool_buttons):
+			await get_tree().process_frame
 		for child in Tools._tool_buttons.get_children():
 			var background: NinePatchRect = child.get_node("BackgroundRight")
 			background.modulate = value
@@ -271,28 +300,32 @@ var grid_type := GridTypes.CARTESIAN:
 		if value == grid_type:
 			return
 		grid_type = value
-		canvas.grid.queue_redraw()
+		if is_instance_valid(canvas.grid):
+			canvas.grid.queue_redraw()
 ## Found in Preferences. The size of rectangular grid.
 var grid_size := Vector2i(2, 2):
 	set(value):
 		if value == grid_size:
 			return
 		grid_size = value
-		canvas.grid.queue_redraw()
+		if is_instance_valid(canvas.grid):
+			canvas.grid.queue_redraw()
 ## Found in Preferences. The size of isometric grid.
 var isometric_grid_size := Vector2i(16, 8):
 	set(value):
 		if value == isometric_grid_size:
 			return
 		isometric_grid_size = value
-		canvas.grid.queue_redraw()
+		if is_instance_valid(canvas.grid):
+			canvas.grid.queue_redraw()
 ## Found in Preferences. The grid offset from top-left corner of the canvas.
 var grid_offset := Vector2i.ZERO:
 	set(value):
 		if value == grid_offset:
 			return
 		grid_offset = value
-		canvas.grid.queue_redraw()
+		if is_instance_valid(canvas.grid):
+			canvas.grid.queue_redraw()
 ## Found in Preferences. If [code]true[/code], The grid draws over the area extended by
 ## tile-mode as well.
 var grid_draw_over_tile_mode := false:
@@ -300,28 +333,32 @@ var grid_draw_over_tile_mode := false:
 		if value == grid_draw_over_tile_mode:
 			return
 		grid_draw_over_tile_mode = value
-		canvas.grid.queue_redraw()
+		if is_instance_valid(canvas.grid):
+			canvas.grid.queue_redraw()
 ## Found in Preferences. The color of grid.
 var grid_color := Color.BLACK:
 	set(value):
 		if value == grid_color:
 			return
 		grid_color = value
-		canvas.grid.queue_redraw()
+		if is_instance_valid(canvas.grid):
+			canvas.grid.queue_redraw()
 ## Found in Preferences. The minimum zoom after which pixel grid gets drawn if enabled.
 var pixel_grid_show_at_zoom := 1500.0:  # percentage
 	set(value):
 		if value == pixel_grid_show_at_zoom:
 			return
 		pixel_grid_show_at_zoom = value
-		canvas.pixel_grid.queue_redraw()
+		if is_instance_valid(canvas.pixel_grid):
+			canvas.pixel_grid.queue_redraw()
 ## Found in Preferences. The color of pixel grid.
 var pixel_grid_color := Color("21212191"):
 	set(value):
 		if value == pixel_grid_color:
 			return
 		pixel_grid_color = value
-		canvas.pixel_grid.queue_redraw()
+		if is_instance_valid(canvas.pixel_grid):
+			canvas.pixel_grid.queue_redraw()
 ## Found in Preferences. The color of guides.
 var guide_color := Color.PURPLE:
 	set(value):
@@ -372,7 +409,8 @@ var tilemode_opacity := 1.0:
 		if value == tilemode_opacity:
 			return
 		tilemode_opacity = value
-		canvas.tile_mode.queue_redraw()
+		if is_instance_valid(canvas.tile_mode):
+			canvas.tile_mode.queue_redraw()
 
 ## Found in Preferences. If [code]true[/code], layers get selected when their buttons are pressed.
 var select_layer_on_button_click := false
@@ -382,16 +420,18 @@ var onion_skinning_past_color := Color.RED:
 		if value == onion_skinning_past_color:
 			return
 		onion_skinning_past_color = value
-		canvas.onion_past.blue_red_color = value
-		canvas.onion_past.queue_redraw()
+		if is_instance_valid(canvas.onion_past):
+			canvas.onion_past.blue_red_color = value
+			canvas.onion_past.queue_redraw()
 ## Found in Preferences. The onion color of future frames.
 var onion_skinning_future_color := Color.BLUE:
 	set(value):
 		if value == onion_skinning_future_color:
 			return
 		onion_skinning_future_color = value
-		canvas.onion_future.blue_red_color = value
-		canvas.onion_future.queue_redraw()
+		if is_instance_valid(canvas.onion_future):
+			canvas.onion_future.blue_red_color = value
+			canvas.onion_future.queue_redraw()
 
 ## Found in Preferences. If [code]true[/code], the selection rect has animated borders.
 var selection_animated_borders := true:
@@ -399,26 +439,29 @@ var selection_animated_borders := true:
 		if value == selection_animated_borders:
 			return
 		selection_animated_borders = value
-		var marching_ants: Sprite2D = canvas.selection.marching_ants_outline
-		marching_ants.material.set_shader_parameter("animated", selection_animated_borders)
+		if is_instance_valid(canvas.selection):
+			var marching_ants: Sprite2D = canvas.selection.marching_ants_outline
+			marching_ants.material.set_shader_parameter("animated", selection_animated_borders)
 ## Found in Preferences. The first color of border.
 var selection_border_color_1 := Color.WHITE:
 	set(value):
 		if value == selection_border_color_1:
 			return
 		selection_border_color_1 = value
-		var marching_ants: Sprite2D = canvas.selection.marching_ants_outline
-		marching_ants.material.set_shader_parameter("first_color", selection_border_color_1)
-		canvas.selection.queue_redraw()
+		if is_instance_valid(canvas.selection):
+			var marching_ants: Sprite2D = canvas.selection.marching_ants_outline
+			marching_ants.material.set_shader_parameter("first_color", selection_border_color_1)
+			canvas.selection.queue_redraw()
 ## Found in Preferences. The second color of border.
 var selection_border_color_2 := Color.BLACK:
 	set(value):
 		if value == selection_border_color_2:
 			return
 		selection_border_color_2 = value
-		var marching_ants: Sprite2D = canvas.selection.marching_ants_outline
-		marching_ants.material.set_shader_parameter("second_color", selection_border_color_2)
-		canvas.selection.queue_redraw()
+		if is_instance_valid(canvas.selection):
+			var marching_ants: Sprite2D = canvas.selection.marching_ants_outline
+			marching_ants.material.set_shader_parameter("second_color", selection_border_color_2)
+			canvas.selection.queue_redraw()
 
 ## Found in Preferences. If [code]true[/code], Pixelorama pauses when unfocused to save cpu usage.
 var pause_when_unfocused := true
@@ -454,18 +497,14 @@ var enable_autosave := true:
 			return
 		enable_autosave = value
 		OpenSave.update_autosave()
-## Found in Preferences. The index of graphics renderer used by Pixelorama.
-var renderer := 0:
-	set = _renderer_changed
 ## Found in Preferences. The index of tablet driver used by Pixelorama.
 var tablet_driver := 0:
 	set(value):
 		if value == tablet_driver:
 			return
 		tablet_driver = value
-		var tablet_driver_name := DisplayServer.tablet_get_current_driver()
-		ProjectSettings.set_setting("display/window/tablet_driver", tablet_driver_name)
-		ProjectSettings.save_custom(root_directory.path_join(OVERRIDE_FILE))
+		var tablet_driver_name := DisplayServer.tablet_get_driver_name(tablet_driver)
+		DisplayServer.tablet_set_current_driver(tablet_driver_name)
 
 # Tools & options
 ## Found in Preferences. If [code]true[/code], the cursor's left tool icon is visible.
@@ -480,6 +519,8 @@ var right_square_indicator_visible := true
 var native_cursors := false:
 	set(value):
 		if value == native_cursors:
+			return
+		if DisplayServer.get_name() == "headless":
 			return
 		native_cursors = value
 		if native_cursors:
@@ -529,7 +570,7 @@ var onion_skinning_future_rate := 1
 var onion_skinning_blue_red := false  ## If [code]true[/code], then blue-red mode is enabled.
 
 ## The current version of pixelorama
-var current_version: String = ProjectSettings.get_setting("application/config/Version")
+var current_version: String = ProjectSettings.get_setting("application/config/version")
 
 # Nodes
 ## The [PackedScene] of the button used by layers in the timeline.
@@ -559,11 +600,11 @@ var cel_button_scene: PackedScene = load("res://src/UI/Timeline/CelButton.tscn")
 @onready var small_preview_viewport: SubViewportContainer = canvas_preview_container.find_child(
 	"PreviewViewportContainer"
 )
-## Camera of the main canvas. It has the [param CameraMovement.gd] script attached.
+## Camera of the main canvas.
 @onready var camera: CanvasCamera = main_viewport.find_child("Camera2D")
-## Camera of the second canvas preview. It has the [param CameraMovement.gd] script attached.
+## Camera of the second canvas preview.
 @onready var camera2: CanvasCamera = second_viewport.find_child("Camera2D2")
-## Camera of the canvas preview. It has the [param CameraMovement.gd] script attached.
+## Camera of the canvas preview.
 @onready var camera_preview: CanvasCamera = control.find_child("CameraPreview")
 ## Array of cameras used in Pixelorama.
 @onready var cameras := [camera, camera2, camera_preview]
@@ -606,15 +647,20 @@ var cel_button_scene: PackedScene = load("res://src/UI/Timeline/CelButton.tscn")
 @onready var save_sprites_dialog: FileDialog = control.find_child("SaveSprite")
 ## Dialog used to export images. It has the [param ExportDialog.gd] script attached.
 @onready var export_dialog: AcceptDialog = control.find_child("ExportDialog")
-## The preferences dialog. It has the [param PreferencesDialog.gd] script attached.
-@onready var preferences_dialog: AcceptDialog = control.find_child("PreferencesDialog")
 ## An error dialog to show errors.
 @onready var error_dialog: AcceptDialog = control.find_child("ErrorDialog")
 
 
 func _init() -> void:
+	# Load settings from the config file
+	config_cache.load(CONFIG_PATH)
+	loaded_locales.sort()  # Make sure locales are always sorted
 	if OS.has_feature("template"):
 		root_directory = OS.get_executable_path().get_base_dir()
+	if OS.get_name() == "macOS":
+		data_directories.append(
+			root_directory.path_join("../Resources").path_join(CONFIG_SUBDIR_NAME)
+		)
 	data_directories.append(root_directory.path_join(CONFIG_SUBDIR_NAME))
 	if OS.get_name() in ["Linux", "FreeBSD", "NetBSD", "OpenBSD", "BSD"]:
 		# Checks the list of files var, and processes them.
@@ -637,9 +683,11 @@ func _init() -> void:
 
 func _ready() -> void:
 	_initialize_keychain()
-	# Load settings from the config file
-	config_cache.load("user://cache.ini")
-
+	var saved_locale := OS.get_locale()
+	# Load language
+	if config_cache.has_section_key("preferences", "locale"):
+		saved_locale = config_cache.get_value("preferences", "locale")
+	set_locale(saved_locale)  # If no language is saved, OS' locale is used
 	default_width = config_cache.get_value("preferences", "default_width", default_width)
 	default_height = config_cache.get_value("preferences", "default_height", default_height)
 	default_fill_color = config_cache.get_value(
@@ -650,6 +698,12 @@ func _ready() -> void:
 	current_project = projects[0]
 	current_project.fill_color = default_fill_color
 
+	# Load preferences from the config file
+	for pref in config_cache.get_section_keys("preferences"):
+		if get(pref) == null:
+			continue
+		var value = config_cache.get_value("preferences", pref)
+		set(pref, value)
 	await get_tree().process_frame
 	project_switched.emit()
 
@@ -657,121 +711,126 @@ func _ready() -> void:
 func _initialize_keychain() -> void:
 	Keychain.config_file = config_cache
 	Keychain.actions = {
-		"new_file": Keychain.InputAction.new("", "File menu", true),
-		"open_file": Keychain.InputAction.new("", "File menu", true),
-		"open_last_project": Keychain.InputAction.new("", "File menu", true),
-		"save_file": Keychain.InputAction.new("", "File menu", true),
-		"save_file_as": Keychain.InputAction.new("", "File menu", true),
-		"export_file": Keychain.InputAction.new("", "File menu", true),
-		"export_file_as": Keychain.InputAction.new("", "File menu", true),
-		"quit": Keychain.InputAction.new("", "File menu", true),
-		"redo": Keychain.InputAction.new("", "Edit menu", true),
-		"undo": Keychain.InputAction.new("", "Edit menu", true),
-		"cut": Keychain.InputAction.new("", "Edit menu", true),
-		"copy": Keychain.InputAction.new("", "Edit menu", true),
-		"paste": Keychain.InputAction.new("", "Edit menu", true),
-		"paste_in_place": Keychain.InputAction.new("", "Edit menu", true),
-		"delete": Keychain.InputAction.new("", "Edit menu", true),
-		"new_brush": Keychain.InputAction.new("", "Edit menu", true),
-		"preferences": Keychain.InputAction.new("", "Edit menu", true),
-		"scale_image": Keychain.InputAction.new("", "Image menu", true),
-		"crop_to_selection": Keychain.InputAction.new("", "Image menu", true),
-		"crop_to_content": Keychain.InputAction.new("", "Image menu", true),
-		"resize_canvas": Keychain.InputAction.new("", "Image menu", true),
-		"offset_image": Keychain.InputAction.new("", "Image menu", true),
-		"mirror_image": Keychain.InputAction.new("", "Image menu", true),
-		"rotate_image": Keychain.InputAction.new("", "Image menu", true),
-		"invert_colors": Keychain.InputAction.new("", "Image menu", true),
-		"desaturation": Keychain.InputAction.new("", "Image menu", true),
-		"outline": Keychain.InputAction.new("", "Image menu", true),
-		"drop_shadow": Keychain.InputAction.new("", "Image menu", true),
-		"adjust_hsv": Keychain.InputAction.new("", "Image menu", true),
-		"gradient": Keychain.InputAction.new("", "Image menu", true),
-		"gradient_map": Keychain.InputAction.new("", "Image menu", true),
-		"posterize": Keychain.InputAction.new("", "Image menu", true),
-		"mirror_view": Keychain.InputAction.new("", "View menu", true),
-		"show_grid": Keychain.InputAction.new("", "View menu", true),
-		"show_pixel_grid": Keychain.InputAction.new("", "View menu", true),
-		"show_guides": Keychain.InputAction.new("", "View menu", true),
-		"show_rulers": Keychain.InputAction.new("", "View menu", true),
+		&"new_file": Keychain.InputAction.new("", "File menu", true),
+		&"open_file": Keychain.InputAction.new("", "File menu", true),
+		&"open_last_project": Keychain.InputAction.new("", "File menu", true),
+		&"save_file": Keychain.InputAction.new("", "File menu", true),
+		&"save_file_as": Keychain.InputAction.new("", "File menu", true),
+		&"export_file": Keychain.InputAction.new("", "File menu", true),
+		&"export_file_as": Keychain.InputAction.new("", "File menu", true),
+		&"quit": Keychain.InputAction.new("", "File menu", true),
+		&"redo": Keychain.InputAction.new("", "Edit menu", true),
+		&"undo": Keychain.InputAction.new("", "Edit menu", true),
+		&"cut": Keychain.InputAction.new("", "Edit menu", true),
+		&"copy": Keychain.InputAction.new("", "Edit menu", true),
+		&"paste": Keychain.InputAction.new("", "Edit menu", true),
+		&"paste_in_place": Keychain.InputAction.new("", "Edit menu", true),
+		&"delete": Keychain.InputAction.new("", "Edit menu", true),
+		&"new_brush": Keychain.InputAction.new("", "Edit menu", true),
+		&"preferences": Keychain.InputAction.new("", "Edit menu", true),
+		&"project_properties": Keychain.InputAction.new("", "Image menu", true),
+		&"scale_image": Keychain.InputAction.new("", "Image menu", true),
+		&"crop_to_selection": Keychain.InputAction.new("", "Image menu", true),
+		&"crop_to_content": Keychain.InputAction.new("", "Image menu", true),
+		&"resize_canvas": Keychain.InputAction.new("", "Image menu", true),
+		&"offset_image": Keychain.InputAction.new("", "Effects menu", true),
+		&"mirror_image": Keychain.InputAction.new("", "Effects menu", true),
+		&"rotate_image": Keychain.InputAction.new("", "Effects menu", true),
+		&"invert_colors": Keychain.InputAction.new("", "Effects menu", true),
+		&"desaturation": Keychain.InputAction.new("", "Effects menu", true),
+		&"outline": Keychain.InputAction.new("", "Effects menu", true),
+		&"drop_shadow": Keychain.InputAction.new("", "Effects menu", true),
+		&"adjust_hsv": Keychain.InputAction.new("", "Effects menu", true),
+		&"gradient": Keychain.InputAction.new("", "Effects menu", true),
+		&"gradient_map": Keychain.InputAction.new("", "Effects menu", true),
+		&"palettize": Keychain.InputAction.new("", "Effects menu", true),
+		&"pixelize": Keychain.InputAction.new("", "Effects menu", true),
+		&"posterize": Keychain.InputAction.new("", "Effects menu", true),
+		&"mirror_view": Keychain.InputAction.new("", "View menu", true),
+		&"show_grid": Keychain.InputAction.new("", "View menu", true),
+		&"show_pixel_grid": Keychain.InputAction.new("", "View menu", true),
+		&"show_guides": Keychain.InputAction.new("", "View menu", true),
+		&"show_rulers": Keychain.InputAction.new("", "View menu", true),
 		&"display_layer_effects": Keychain.InputAction.new("", "View menu", true),
-		"moveable_panels": Keychain.InputAction.new("", "Window menu", true),
-		"zen_mode": Keychain.InputAction.new("", "Window menu", true),
-		"toggle_fullscreen": Keychain.InputAction.new("", "Window menu", true),
-		"clear_selection": Keychain.InputAction.new("", "Select menu", true),
-		"select_all": Keychain.InputAction.new("", "Select menu", true),
-		"invert_selection": Keychain.InputAction.new("", "Select menu", true),
-		"view_splash_screen": Keychain.InputAction.new("", "Help menu", true),
-		"open_docs": Keychain.InputAction.new("", "Help menu", true),
-		"issue_tracker": Keychain.InputAction.new("", "Help menu", true),
-		"open_logs_folder": Keychain.InputAction.new("", "Help menu", true),
-		"changelog": Keychain.InputAction.new("", "Help menu", true),
-		"about_pixelorama": Keychain.InputAction.new("", "Help menu", true),
-		"zoom_in": Keychain.InputAction.new("", "Canvas"),
-		"zoom_out": Keychain.InputAction.new("", "Canvas"),
-		"camera_left": Keychain.InputAction.new("", "Canvas"),
-		"camera_right": Keychain.InputAction.new("", "Canvas"),
-		"camera_up": Keychain.InputAction.new("", "Canvas"),
-		"camera_down": Keychain.InputAction.new("", "Canvas"),
-		"pan": Keychain.InputAction.new("", "Canvas"),
-		"activate_left_tool": Keychain.InputAction.new("", "Canvas"),
-		"activate_right_tool": Keychain.InputAction.new("", "Canvas"),
-		"move_mouse_left": Keychain.InputAction.new("", "Cursor movement"),
-		"move_mouse_right": Keychain.InputAction.new("", "Cursor movement"),
-		"move_mouse_up": Keychain.InputAction.new("", "Cursor movement"),
-		"move_mouse_down": Keychain.InputAction.new("", "Cursor movement"),
-		"reset_colors_default": Keychain.InputAction.new("", "Buttons"),
-		"switch_colors": Keychain.InputAction.new("", "Buttons"),
-		"horizontal_mirror": Keychain.InputAction.new("", "Buttons"),
-		"vertical_mirror": Keychain.InputAction.new("", "Buttons"),
-		"pixel_perfect": Keychain.InputAction.new("", "Buttons"),
-		"new_layer": Keychain.InputAction.new("", "Buttons"),
-		"remove_layer": Keychain.InputAction.new("", "Buttons"),
-		"move_layer_up": Keychain.InputAction.new("", "Buttons"),
-		"move_layer_down": Keychain.InputAction.new("", "Buttons"),
-		"clone_layer": Keychain.InputAction.new("", "Buttons"),
-		"merge_down_layer": Keychain.InputAction.new("", "Buttons"),
-		"add_frame": Keychain.InputAction.new("", "Buttons"),
-		"remove_frame": Keychain.InputAction.new("", "Buttons"),
-		"clone_frame": Keychain.InputAction.new("", "Buttons"),
-		"manage_frame_tags": Keychain.InputAction.new("", "Buttons"),
-		"move_frame_left": Keychain.InputAction.new("", "Buttons"),
-		"move_frame_right": Keychain.InputAction.new("", "Buttons"),
-		"go_to_first_frame": Keychain.InputAction.new("", "Buttons"),
-		"go_to_last_frame": Keychain.InputAction.new("", "Buttons"),
-		"go_to_previous_frame": Keychain.InputAction.new("", "Buttons"),
-		"go_to_next_frame": Keychain.InputAction.new("", "Buttons"),
-		"play_backwards": Keychain.InputAction.new("", "Buttons"),
-		"play_forward": Keychain.InputAction.new("", "Buttons"),
-		"onion_skinning_toggle": Keychain.InputAction.new("", "Buttons"),
-		"loop_toggle": Keychain.InputAction.new("", "Buttons"),
-		"onion_skinning_settings": Keychain.InputAction.new("", "Buttons"),
-		"new_palette": Keychain.InputAction.new("", "Buttons"),
-		"edit_palette": Keychain.InputAction.new("", "Buttons"),
-		"brush_size_increment": Keychain.InputAction.new("", "Buttons"),
-		"brush_size_decrement": Keychain.InputAction.new("", "Buttons"),
-		"change_tool_mode": Keychain.InputAction.new("", "Tool modifiers", false),
-		"draw_create_line": Keychain.InputAction.new("", "Draw tools", false),
-		"draw_snap_angle": Keychain.InputAction.new("", "Draw tools", false),
-		"draw_color_picker": Keychain.InputAction.new("Quick color picker", "Draw tools", false),
-		"shape_perfect": Keychain.InputAction.new("", "Shape tools", false),
-		"shape_center": Keychain.InputAction.new("", "Shape tools", false),
-		"shape_displace": Keychain.InputAction.new("", "Shape tools", false),
-		"selection_add": Keychain.InputAction.new("", "Selection tools", false),
-		"selection_subtract": Keychain.InputAction.new("", "Selection tools", false),
-		"selection_intersect": Keychain.InputAction.new("", "Selection tools", false),
-		"transformation_confirm": Keychain.InputAction.new("", "Transformation tools", false),
-		"transformation_cancel": Keychain.InputAction.new("", "Transformation tools", false),
-		"transform_snap_axis": Keychain.InputAction.new("", "Transformation tools", false),
-		"transform_snap_grid": Keychain.InputAction.new("", "Transformation tools", false),
-		"transform_move_selection_only":
+		&"moveable_panels": Keychain.InputAction.new("", "Window menu", true),
+		&"zen_mode": Keychain.InputAction.new("", "Window menu", true),
+		&"toggle_fullscreen": Keychain.InputAction.new("", "Window menu", true),
+		&"clear_selection": Keychain.InputAction.new("", "Select menu", true),
+		&"select_all": Keychain.InputAction.new("", "Select menu", true),
+		&"invert_selection": Keychain.InputAction.new("", "Select menu", true),
+		&"view_splash_screen": Keychain.InputAction.new("", "Help menu", true),
+		&"open_docs": Keychain.InputAction.new("", "Help menu", true),
+		&"issue_tracker": Keychain.InputAction.new("", "Help menu", true),
+		&"open_logs_folder": Keychain.InputAction.new("", "Help menu", true),
+		&"changelog": Keychain.InputAction.new("", "Help menu", true),
+		&"about_pixelorama": Keychain.InputAction.new("", "Help menu", true),
+		&"zoom_in": Keychain.InputAction.new("", "Canvas"),
+		&"zoom_out": Keychain.InputAction.new("", "Canvas"),
+		&"camera_left": Keychain.InputAction.new("", "Canvas"),
+		&"camera_right": Keychain.InputAction.new("", "Canvas"),
+		&"camera_up": Keychain.InputAction.new("", "Canvas"),
+		&"camera_down": Keychain.InputAction.new("", "Canvas"),
+		&"pan": Keychain.InputAction.new("", "Canvas"),
+		&"activate_left_tool": Keychain.InputAction.new("", "Canvas"),
+		&"activate_right_tool": Keychain.InputAction.new("", "Canvas"),
+		&"move_mouse_left": Keychain.InputAction.new("", "Cursor movement"),
+		&"move_mouse_right": Keychain.InputAction.new("", "Cursor movement"),
+		&"move_mouse_up": Keychain.InputAction.new("", "Cursor movement"),
+		&"move_mouse_down": Keychain.InputAction.new("", "Cursor movement"),
+		&"reset_colors_default": Keychain.InputAction.new("", "Buttons"),
+		&"switch_colors": Keychain.InputAction.new("", "Buttons"),
+		&"horizontal_mirror": Keychain.InputAction.new("", "Buttons"),
+		&"vertical_mirror": Keychain.InputAction.new("", "Buttons"),
+		&"pixel_perfect": Keychain.InputAction.new("", "Buttons"),
+		&"alpha_lock": Keychain.InputAction.new("", "Buttons"),
+		&"new_layer": Keychain.InputAction.new("", "Buttons"),
+		&"remove_layer": Keychain.InputAction.new("", "Buttons"),
+		&"move_layer_up": Keychain.InputAction.new("", "Buttons"),
+		&"move_layer_down": Keychain.InputAction.new("", "Buttons"),
+		&"clone_layer": Keychain.InputAction.new("", "Buttons"),
+		&"merge_down_layer": Keychain.InputAction.new("", "Buttons"),
+		&"add_frame": Keychain.InputAction.new("", "Buttons"),
+		&"remove_frame": Keychain.InputAction.new("", "Buttons"),
+		&"clone_frame": Keychain.InputAction.new("", "Buttons"),
+		&"move_frame_left": Keychain.InputAction.new("", "Buttons"),
+		&"move_frame_right": Keychain.InputAction.new("", "Buttons"),
+		&"go_to_first_frame": Keychain.InputAction.new("", "Buttons"),
+		&"go_to_last_frame": Keychain.InputAction.new("", "Buttons"),
+		&"go_to_previous_frame": Keychain.InputAction.new("", "Buttons"),
+		&"go_to_next_frame": Keychain.InputAction.new("", "Buttons"),
+		&"go_to_previous_layer": Keychain.InputAction.new("", "Buttons"),
+		&"go_to_next_layer": Keychain.InputAction.new("", "Buttons"),
+		&"play_backwards": Keychain.InputAction.new("", "Buttons"),
+		&"play_forward": Keychain.InputAction.new("", "Buttons"),
+		&"onion_skinning_toggle": Keychain.InputAction.new("", "Buttons"),
+		&"loop_toggle": Keychain.InputAction.new("", "Buttons"),
+		&"onion_skinning_settings": Keychain.InputAction.new("", "Buttons"),
+		&"new_palette": Keychain.InputAction.new("", "Buttons"),
+		&"edit_palette": Keychain.InputAction.new("", "Buttons"),
+		&"brush_size_increment": Keychain.InputAction.new("", "Buttons"),
+		&"brush_size_decrement": Keychain.InputAction.new("", "Buttons"),
+		&"change_tool_mode": Keychain.InputAction.new("", "Tool modifiers", false),
+		&"draw_create_line": Keychain.InputAction.new("", "Draw tools", false),
+		&"draw_snap_angle": Keychain.InputAction.new("", "Draw tools", false),
+		&"draw_color_picker": Keychain.InputAction.new("Quick color picker", "Draw tools", false),
+		&"shape_perfect": Keychain.InputAction.new("", "Shape tools", false),
+		&"shape_center": Keychain.InputAction.new("", "Shape tools", false),
+		&"shape_displace": Keychain.InputAction.new("", "Shape tools", false),
+		&"selection_add": Keychain.InputAction.new("", "Selection tools", false),
+		&"selection_subtract": Keychain.InputAction.new("", "Selection tools", false),
+		&"selection_intersect": Keychain.InputAction.new("", "Selection tools", false),
+		&"transformation_confirm": Keychain.InputAction.new("", "Transformation tools", false),
+		&"transformation_cancel": Keychain.InputAction.new("", "Transformation tools", false),
+		&"transform_snap_axis": Keychain.InputAction.new("", "Transformation tools", false),
+		&"transform_snap_grid": Keychain.InputAction.new("", "Transformation tools", false),
+		&"transform_move_selection_only":
 		Keychain.InputAction.new("", "Transformation tools", false),
-		"transform_copy_selection_content":
+		&"transform_copy_selection_content":
 		Keychain.InputAction.new("", "Transformation tools", false),
-		"reference_rotate": Keychain.InputAction.new("", "Reference images", false),
-		"reference_scale": Keychain.InputAction.new("", "Reference images", false),
-		"reference_quick_menu": Keychain.InputAction.new("", "Reference images", false),
-		"cancel_reference_transform": Keychain.InputAction.new("", "Reference images", false)
+		&"reference_rotate": Keychain.InputAction.new("", "Reference images", false),
+		&"reference_scale": Keychain.InputAction.new("", "Reference images", false),
+		&"reference_quick_menu": Keychain.InputAction.new("", "Reference images", false),
+		&"cancel_reference_transform": Keychain.InputAction.new("", "Reference images", false)
 	}
 
 	Keychain.groups = {
@@ -787,6 +846,7 @@ func _initialize_keychain() -> void:
 		"View menu": Keychain.InputGroup.new("Menu"),
 		"Select menu": Keychain.InputGroup.new("Menu"),
 		"Image menu": Keychain.InputGroup.new("Menu"),
+		"Effects menu": Keychain.InputGroup.new("Menu"),
 		"Window menu": Keychain.InputGroup.new("Menu"),
 		"Help menu": Keychain.InputGroup.new("Menu"),
 		"Tool modifiers": Keychain.InputGroup.new(),
@@ -884,21 +944,6 @@ func undo_or_redo(
 	project.has_changed = true
 
 
-func _renderer_changed(value: int) -> void:
-	renderer = value
-
-
-#	if OS.has_feature("editor"):
-#		return
-#
-#	# Sets GLES2 as the default value in `override.cfg`.
-#	# Without this, switching to GLES3 does not work, because it will default to GLES2.
-#	ProjectSettings.set_initial_value("rendering/quality/driver/driver_name", "GLES2")
-#	var renderer_name := OS.get_video_driver_name(renderer)
-#	ProjectSettings.set_setting("rendering/quality/driver/driver_name", renderer_name)
-#	ProjectSettings.save_custom(root_directory.path_join(OVERRIDE_FILE))
-
-
 ## Use this to prepare Pixelorama before opening a dialog.
 func dialog_open(open: bool, is_file_dialog := false) -> void:
 	if is_file_dialog and use_native_file_dialogs:
@@ -953,7 +998,35 @@ func path_join_array(basepaths: PackedStringArray, subpath: String) -> PackedStr
 	return res
 
 
+func set_locale(locale: String) -> void:
+	locale = find_nearest_locale(locale)
+	if not locale in TranslationServer.get_loaded_locales():
+		var translation := load("res://Translations/%s.po" % locale)
+		if is_instance_valid(translation) and translation is Translation:
+			TranslationServer.add_translation(translation)
+		else:
+			printerr("Translation %s for locale %s failed to load." % [translation, locale])
+			return
+		Keychain.load_translation(locale)
+	TranslationServer.set_locale(locale)
+
+
+func find_nearest_locale(locale: String) -> String:
+	if locale in loaded_locales:
+		return locale
+	var max_similarity_score := 0
+	var closest_locale := "en_US"
+	for loaded_locale in loaded_locales:
+		var compared := TranslationServer.compare_locales(locale, loaded_locale)
+		if compared > max_similarity_score:
+			max_similarity_score = compared
+			closest_locale = loaded_locale
+	return closest_locale
+
+
 ## Used by undo/redo operations to store compressed images in memory.
+## [param redo_data] and [param undo_data] are Dictionaries,
+## with keys of type [Image] and [Dictionary] values, coming from [member Image.data].
 func undo_redo_compress_images(
 	redo_data: Dictionary, undo_data: Dictionary, project := current_project
 ) -> void:
@@ -980,22 +1053,12 @@ func undo_redo_compress_images(
 
 
 ## Decompresses the [param compressed_image_data] with [param buffer_size] to the [param image]
-## This is an optimization method used while performing undo/redo drawing operations.
+## This is a memory optimization method used while performing undo/redo drawing operations.
 func undo_redo_draw_op(
 	image: Image, new_size: Vector2i, compressed_image_data: PackedByteArray, buffer_size: int
 ) -> void:
 	var decompressed := compressed_image_data.decompress(buffer_size)
 	image.set_data(new_size.x, new_size.y, image.has_mipmaps(), image.get_format(), decompressed)
-
-
-## Used by the Move tool for undo/redo, moves all of the [Image]s in [param images]
-## by [param diff] pixels.
-func undo_redo_move(diff: Vector2i, images: Array[Image]) -> void:
-	for image in images:
-		var image_copy := Image.new()
-		image_copy.copy_from(image)
-		image.fill(Color(0, 0, 0, 0))
-		image.blit_rect(image_copy, Rect2i(Vector2i.ZERO, image.get_size()), diff)
 
 
 func create_ui_for_shader_uniforms(
@@ -1090,14 +1153,16 @@ func create_ui_for_shader_uniforms(
 			hbox.add_child(label)
 			hbox.add_child(slider)
 			parent_node.add_child(hbox)
-		elif u_type == "vec2":
+		elif u_type == "vec2" or u_type == "ivec2" or u_type == "uvec2":
 			var label := Label.new()
 			label.text = humanized_u_name
 			label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			var vector2 := _vec2str_to_vector2(u_value)
 			var slider := VALUE_SLIDER_V2_TSCN.instantiate() as ValueSliderV2
+			slider.show_ratio = true
 			slider.allow_greater = true
-			slider.allow_lesser = true
+			if u_type != "uvec2":
+				slider.allow_lesser = true
 			slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			slider.value = vector2
 			if params.has(u_name):
@@ -1131,6 +1196,17 @@ func create_ui_for_shader_uniforms(
 				parent_node.add_child(hbox)
 		elif u_type == "sampler2D":
 			if u_name == "selection":
+				continue
+			if u_name == "palette_texture":
+				var palette := Palettes.current_palette
+				var palette_texture := ImageTexture.create_from_image(palette.convert_to_image())
+				value_changed.call(palette_texture, u_name)
+				Palettes.palette_selected.connect(
+					func(_name): _shader_change_palette(value_changed, u_name)
+				)
+				palette.data_changed.connect(
+					func(): _shader_update_palette_texture(palette, value_changed, u_name)
+				)
 				continue
 			var label := Label.new()
 			label.text = humanized_u_name
@@ -1187,6 +1263,8 @@ func create_ui_for_shader_uniforms(
 
 
 func _vec2str_to_vector2(vec2: String) -> Vector2:
+	vec2 = vec2.replace("uvec2", "vec2")
+	vec2 = vec2.replace("ivec2", "vec2")
 	vec2 = vec2.replace("vec2(", "")
 	vec2 = vec2.replace(")", "")
 	var vec_values := vec2.split(",")
@@ -1218,3 +1296,18 @@ func _vec4str_to_color(vec4: String) -> Color:
 		alpha = float(rgba_values[3])
 	var color := Color(red, green, blue, alpha)
 	return color
+
+
+func _shader_change_palette(value_changed: Callable, parameter_name: String) -> void:
+	var palette := Palettes.current_palette
+	_shader_update_palette_texture(palette, value_changed, parameter_name)
+	#if not palette.data_changed.is_connected(_shader_update_palette_texture):
+	palette.data_changed.connect(
+		func(): _shader_update_palette_texture(palette, value_changed, parameter_name)
+	)
+
+
+func _shader_update_palette_texture(
+	palette: Palette, value_changed: Callable, parameter_name: String
+) -> void:
+	value_changed.call(ImageTexture.create_from_image(palette.convert_to_image()), parameter_name)

@@ -1,11 +1,12 @@
 extends Button
 
-enum { PROPERTIES, REMOVE, CLONE, MOVE_LEFT, MOVE_RIGHT, REVERSE, CENTER }
+enum { PROPERTIES, REMOVE, CLONE, MOVE_LEFT, MOVE_RIGHT, NEW_TAG, REVERSE, CENTER }
 
 var frame := 0
 
 @onready var popup_menu: PopupMenu = $PopupMenu
-@onready var frame_properties: ConfirmationDialog = Global.control.find_child("FrameProperties")
+@onready var frame_properties := Global.control.find_child("FrameProperties") as ConfirmationDialog
+@onready var tag_properties := Global.control.find_child("TagProperties") as ConfirmationDialog
 
 
 func _ready() -> void:
@@ -79,41 +80,25 @@ func _button_pressed() -> void:
 func _on_PopupMenu_id_pressed(id: int) -> void:
 	var indices := _get_frame_indices()
 	match id:
+		PROPERTIES:
+			frame_properties.frame_indices = indices
+			frame_properties.popup_centered()
+			Global.dialog_open(true)
 		REMOVE:
 			Global.animation_timeline.delete_frames(indices)
 		CLONE:
 			Global.animation_timeline.copy_frames(indices)
 		MOVE_LEFT:
-			change_frame_order(-1)
+			Global.animation_timeline.move_frames(frame, -1)
 		MOVE_RIGHT:
-			change_frame_order(1)
-		PROPERTIES:
-			frame_properties.frame_indices = indices
-			frame_properties.popup_centered()
-			Global.dialog_open(true)
+			Global.animation_timeline.move_frames(frame, 1)
+		NEW_TAG:
+			var current_tag_id := Global.current_project.animation_tags.size()
+			tag_properties.show_dialog(Rect2i(), current_tag_id, false, indices)
 		REVERSE:
 			Global.animation_timeline.reverse_frames(indices)
 		CENTER:
 			DrawingAlgos.center(indices)
-
-
-func change_frame_order(rate: int) -> void:
-	var change := frame + rate
-	var project := Global.current_project
-
-	project.undo_redo.create_action("Change Frame Order")
-	project.undo_redo.add_do_method(project.move_frame.bind(frame, change))
-	project.undo_redo.add_undo_method(project.move_frame.bind(change, frame))
-
-	if project.current_frame == frame:
-		project.undo_redo.add_do_method(project.change_cel.bind(change))
-	else:
-		project.undo_redo.add_do_method(project.change_cel.bind(project.current_frame))
-
-	project.undo_redo.add_undo_method(project.change_cel.bind(project.current_frame))
-	project.undo_redo.add_undo_method(Global.undo_or_redo.bind(true))
-	project.undo_redo.add_do_method(Global.undo_or_redo.bind(false))
-	project.undo_redo.commit_action()
 
 
 func _get_drag_data(_position: Vector2) -> Variant:
@@ -123,50 +108,57 @@ func _get_drag_data(_position: Vector2) -> Variant:
 	button.text = text
 	set_drag_preview(button)
 
-	return ["Frame", frame]
+	return ["Frame", _get_frame_indices()]
 
 
 func _can_drop_data(_pos: Vector2, data) -> bool:
-	if typeof(data) == TYPE_ARRAY:
-		if data[0] == "Frame":
-			if data[1] != frame:  # Can't move to same frame
-				var region: Rect2
-				if Input.is_action_pressed("ctrl"):  # Swap frames
-					region = get_global_rect()
-				else:  # Move frames
-					if _get_region_rect(0, 0.5).has_point(get_global_mouse_position()):
-						region = _get_region_rect(-0.125, 0.125)
-						region.position.x -= 2  # Container spacing
-					else:
-						region = _get_region_rect(0.875, 1.125)
-						region.position.x += 2  # Container spacing
-				Global.animation_timeline.drag_highlight.global_position = region.position
-				Global.animation_timeline.drag_highlight.size = region.size
-				Global.animation_timeline.drag_highlight.visible = true
-				return true
-	Global.animation_timeline.drag_highlight.visible = false
-	return false
+	if typeof(data) != TYPE_ARRAY:
+		Global.animation_timeline.drag_highlight.visible = false
+		return false
+	if data[0] != "Frame":
+		Global.animation_timeline.drag_highlight.visible = false
+		return false
+	var drop_frames: PackedInt32Array = data[1]
+	# Can't move to same frame
+	for drop_frame in drop_frames:
+		if drop_frame == frame:
+			Global.animation_timeline.drag_highlight.visible = false
+			return false
+	var region: Rect2
+	if Input.is_action_pressed("ctrl") and drop_frames.size() == 1:  # Swap frames
+		region = get_global_rect()
+	else:  # Move frames
+		if _get_region_rect(0, 0.5).has_point(get_global_mouse_position()):
+			region = _get_region_rect(-0.125, 0.125)
+		else:
+			region = _get_region_rect(0.875, 1.125)
+	Global.animation_timeline.drag_highlight.global_position = region.position
+	Global.animation_timeline.drag_highlight.size = region.size
+	Global.animation_timeline.drag_highlight.visible = true
+	return true
 
 
 func _drop_data(_pos: Vector2, data) -> void:
-	var drop_frame: int = data[1]
+	var drop_frames: PackedInt32Array = data[1]
 	var project := Global.current_project
 	project.undo_redo.create_action("Change Frame Order")
-	if Input.is_action_pressed("ctrl"):  # Swap frames
-		project.undo_redo.add_do_method(project.swap_frame.bind(frame, drop_frame))
-		project.undo_redo.add_undo_method(project.swap_frame.bind(frame, drop_frame))
+	if Input.is_action_pressed("ctrl") and drop_frames.size() == 1:  # Swap frames
+		project.undo_redo.add_do_method(project.swap_frame.bind(frame, drop_frames[0]))
+		project.undo_redo.add_undo_method(project.swap_frame.bind(frame, drop_frames[0]))
 	else:  # Move frames
 		var to_frame: int
 		if _get_region_rect(0, 0.5).has_point(get_global_mouse_position()):  # Left
 			to_frame = frame
 		else:  # Right
 			to_frame = frame + 1
-		if drop_frame < frame:
-			to_frame -= 1
-		project.undo_redo.add_do_method(project.move_frame.bind(drop_frame, to_frame))
-		project.undo_redo.add_undo_method(project.move_frame.bind(to_frame, drop_frame))
+		for drop_frame in drop_frames:
+			if drop_frame < frame:
+				to_frame -= 1
+		var to_frames := range(to_frame, to_frame + drop_frames.size())
+		project.undo_redo.add_do_method(project.move_frames.bind(drop_frames, to_frames))
+		project.undo_redo.add_undo_method(project.move_frames.bind(to_frames, drop_frames))
 
-	if project.current_frame == drop_frame:
+	if project.current_frame in drop_frames:
 		project.undo_redo.add_do_method(project.change_cel.bind(frame))
 	else:
 		project.undo_redo.add_do_method(project.change_cel.bind(project.current_frame))
@@ -183,7 +175,7 @@ func _get_region_rect(x_begin: float, x_end: float) -> Rect2:
 	return rect
 
 
-func _get_frame_indices() -> Array:
+func _get_frame_indices() -> PackedInt32Array:
 	var indices := []
 	for cel in Global.current_project.selected_cels:
 		var f: int = cel[0]

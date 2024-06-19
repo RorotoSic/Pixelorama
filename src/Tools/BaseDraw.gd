@@ -467,7 +467,7 @@ func remove_unselected_parts_of_brush(brush: Image, dst: Vector2i) -> Image:
 	for x in brush_size.x:
 		for y in brush_size.y:
 			var pos := Vector2i(x, y) + dst
-			if !project.selection_map.is_pixel_selected(pos):
+			if !project.can_pixel_get_drawn(pos):
 				new_brush.set_pixel(x, y, Color(0))
 	return new_brush
 
@@ -730,7 +730,7 @@ func _pick_color(pos: Vector2i) -> void:
 		if project.layers[idx].is_visible_in_hierarchy():
 			image = curr_frame.cels[idx].get_image()
 			color = image.get_pixelv(pos)
-			if color != Color(0, 0, 0, 0):
+			if not is_zero_approx(color.a):
 				break
 	var button := (
 		MOUSE_BUTTON_LEFT

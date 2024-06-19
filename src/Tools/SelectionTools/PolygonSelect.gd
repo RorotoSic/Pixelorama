@@ -5,6 +5,11 @@ var _draw_points: Array[Vector2i] = []
 var _ready_to_apply := false
 
 
+func _init() -> void:
+	# To prevent tool from remaining active when switching projects
+	Global.project_about_to_switch.connect(_clear)
+
+
 func _input(event: InputEvent) -> void:
 	if _move:
 		return
@@ -20,10 +25,7 @@ func _input(event: InputEvent) -> void:
 			apply_selection(Vector2i.ZERO)  # Argument doesn't matter
 	else:
 		if event.is_action_pressed("transformation_cancel") and _ongoing_selection:
-			_ongoing_selection = false
-			_draw_points.clear()
-			_ready_to_apply = false
-			Global.canvas.previews.queue_redraw()
+			_clear()
 
 
 func draw_start(pos: Vector2i) -> void:
@@ -74,10 +76,7 @@ func draw_preview() -> void:
 		for line in _create_polylines(indicator):
 			canvas.draw_polyline(PackedVector2Array(line), Color.BLACK)
 
-		var circle_radius := Global.camera.zoom * 10
-		circle_radius.x = clampf(circle_radius.x, 2, circle_radius.x)
-		circle_radius.y = clampf(circle_radius.y, 2, circle_radius.y)
-
+		var circle_radius := Vector2.ONE * (10.0 / Global.camera.zoom.x)
 		if _last_position == _draw_points[0] and _draw_points.size() > 1:
 			draw_empty_circle(
 				canvas, Vector2(_draw_points[0]) + Vector2.ONE * 0.5, circle_radius, Color.BLACK
@@ -115,21 +114,26 @@ func apply_selection(pos: Vector2i) -> void:
 		return
 	var project := Global.current_project
 	var cleared := false
+	var previous_selection_map := SelectionMap.new()  # Used for intersect
+	previous_selection_map.copy_from(project.selection_map)
 	if !_add and !_subtract and !_intersect:
 		cleared = true
 		Global.canvas.selection.clear_selection()
 	if _draw_points.size() > 3:
 		if _intersect:
 			project.selection_map.clear()
-		lasso_selection(project.selection_map, _draw_points)
+		lasso_selection(project.selection_map, previous_selection_map, _draw_points)
 
 		# Handle mirroring
 		if Tools.horizontal_mirror:
-			lasso_selection(project.selection_map, mirror_array(_draw_points, true, false))
+			var mirror_x := mirror_array(_draw_points, true, false)
+			lasso_selection(project.selection_map, previous_selection_map, mirror_x)
 			if Tools.vertical_mirror:
-				lasso_selection(project.selection_map, mirror_array(_draw_points, true, true))
+				var mirror_xy := mirror_array(_draw_points, true, true)
+				lasso_selection(project.selection_map, previous_selection_map, mirror_xy)
 		if Tools.vertical_mirror:
-			lasso_selection(project.selection_map, mirror_array(_draw_points, false, true))
+			var mirror_y := mirror_array(_draw_points, false, true)
+			lasso_selection(project.selection_map, previous_selection_map, mirror_y)
 
 		Global.canvas.selection.big_bounding_rectangle = project.selection_map.get_used_rect()
 	else:
@@ -137,20 +141,26 @@ func apply_selection(pos: Vector2i) -> void:
 			Global.canvas.selection.clear_selection()
 
 	Global.canvas.selection.commit_undo("Select", undo_data)
+	_clear()
+
+
+func _clear() -> void:
 	_ongoing_selection = false
 	_draw_points.clear()
 	_ready_to_apply = false
 	Global.canvas.previews.queue_redraw()
 
 
-func lasso_selection(selection_map: SelectionMap, points: Array[Vector2i]) -> void:
+func lasso_selection(
+	selection_map: SelectionMap, previous_selection_map: SelectionMap, points: Array[Vector2i]
+) -> void:
 	var project := Global.current_project
 	var selection_size := selection_map.get_size()
 	for point in points:
 		if point.x < 0 or point.y < 0 or point.x >= selection_size.x or point.y >= selection_size.y:
 			continue
 		if _intersect:
-			if project.selection_map.is_pixel_selected(point):
+			if previous_selection_map.is_pixel_selected(point):
 				selection_map.select_pixel(point, true)
 		else:
 			selection_map.select_pixel(point, !_subtract)
@@ -163,7 +173,7 @@ func lasso_selection(selection_map: SelectionMap, points: Array[Vector2i]) -> vo
 			v.y = y
 			if Geometry2D.is_point_in_polygon(v, points):
 				if _intersect:
-					if project.selection_map.is_pixel_selected(v):
+					if previous_selection_map.is_pixel_selected(v):
 						selection_map.select_pixel(v, true)
 				else:
 					selection_map.select_pixel(v, !_subtract)
@@ -223,5 +233,5 @@ func draw_empty_circle(
 		draw_counter += 1
 		line_origin = line_end
 
-	line_end = circle_radius.rotated(deg_to_rad(360)) + circle_center
+	line_end = circle_radius.rotated(TAU) + circle_center
 	canvas.draw_line(line_origin, line_end, color)

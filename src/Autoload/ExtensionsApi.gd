@@ -27,7 +27,8 @@ var tools := ToolAPI.new()  ## Gives ability to add/remove tools.
 var selection := SelectionAPI.new()  ## Gives access to pixelorama's selection system.
 var project := ProjectAPI.new()  ## Gives access to project manipulation.
 var export := ExportAPI.new()  ## Gives access to adding custom exporters.
-var import := ImportAPI.new()  ## Gives access to adding custom exporters.
+var import := ImportAPI.new()  ## Gives access to adding custom import options.
+var palette := PaletteAPI.new()  ## Gives access to palettes.
 var signals := SignalsAPI.new()  ## Gives access to the basic commonly used signals.
 
 ## This fail-safe below is designed to work ONLY if Pixelorama is launched in Godot Editor
@@ -124,7 +125,7 @@ func get_main_nodes(extension_name: StringName) -> Array[Node]:
 class GeneralAPI:
 	## Returns the current version of pixelorama.
 	func get_pixelorama_version() -> String:
-		return ProjectSettings.get_setting("application/config/Version")
+		return ProjectSettings.get_setting("application/config/version")
 
 	## Returns the [ConfigFile] contains all the settings (Brushes, sizes, preferences, etc...).
 	func get_config_file() -> ConfigFile:
@@ -164,7 +165,7 @@ class GeneralAPI:
 
 ## Gives ability to add/remove items from menus in the top bar.
 class MenuAPI:
-	enum { FILE, EDIT, SELECT, IMAGE, VIEW, WINDOW, HELP }
+	enum { FILE, EDIT, SELECT, IMAGE, EFFECTS, VIEW, WINDOW, HELP }
 
 	# Menu methods
 	func _get_popup_menu(menu_type: int) -> PopupMenu:
@@ -177,6 +178,8 @@ class MenuAPI:
 				return Global.top_menu_container.select_menu
 			IMAGE:
 				return Global.top_menu_container.image_menu
+			EFFECTS:
+				return Global.top_menu_container.effects_menu
 			VIEW:
 				return Global.top_menu_container.view_menu
 			WINDOW:
@@ -192,7 +195,7 @@ class MenuAPI:
 	## function inside its script.[br]
 	## Index of the added item is returned (which can be used to remove menu item later on).
 	func add_menu_item(menu_type: int, item_name: String, item_metadata, item_id := -1) -> int:
-		var popup_menu: PopupMenu = _get_popup_menu(menu_type)
+		var popup_menu := _get_popup_menu(menu_type)
 		if not popup_menu:
 			return -1
 		popup_menu.add_item(item_name, item_id)
@@ -206,7 +209,7 @@ class MenuAPI:
 	## Removes a menu item at index [param item_idx] from the [param menu_type] defined by
 	## [enum @unnamed_enums].
 	func remove_menu_item(menu_type: int, item_idx: int) -> void:
-		var popup_menu: PopupMenu = _get_popup_menu(menu_type)
+		var popup_menu := _get_popup_menu(menu_type)
 		if not popup_menu:
 			return
 		popup_menu.remove_item(item_idx)
@@ -365,15 +368,12 @@ class PanelAPI:
 class ThemeAPI:
 	## Adds the [param theme] to [code]Edit -> Preferences -> Interface -> Themes[/code].
 	func add_theme(theme: Theme) -> void:
-		var themes: BoxContainer = Global.preferences_dialog.find_child("Themes")
-		themes.themes.append(theme)
-		themes.add_theme(theme)
+		Themes.add_theme(theme)
 		ExtensionsApi.add_action("ThemeAPI", "add_theme")
 
 	## Returns index of the [param theme] in preferences.
 	func find_theme_index(theme: Theme) -> int:
-		var themes: BoxContainer = Global.preferences_dialog.find_child("Themes")
-		return themes.themes.find(theme)
+		return Themes.themes.find(theme)
 
 	## Returns the current theme resource.
 	func get_theme() -> Theme:
@@ -382,16 +382,15 @@ class ThemeAPI:
 	## Sets a theme located at a given [param idx] in preferences. If theme set successfully then
 	## return [code]true[/code], else [code]false[/code].
 	func set_theme(idx: int) -> bool:
-		var themes: BoxContainer = Global.preferences_dialog.find_child("Themes")
-		if idx >= 0 and idx < themes.themes.size():
-			themes.buttons_container.get_child(idx).pressed.emit()
+		if idx >= 0 and idx < Themes.themes.size():
+			Themes.change_theme(idx)
 			return true
 		else:
 			return false
 
 	## Remove the [param theme] from preferences.
 	func remove_theme(theme: Theme) -> void:
-		Global.preferences_dialog.themes.remove_theme(theme)
+		Themes.remove_theme(theme)
 		ExtensionsApi.remove_action("ThemeAPI", "add_theme")
 
 
@@ -647,8 +646,10 @@ class ExportAPI:
 	## [param exporter_generator] is a node with a script containing the method
 	## [method override_export] which takes 1 argument of type Dictionary which is automatically
 	## passed to [method override_export] at time of export and contains
-	## keys: [code]processed_images[/code], [code]durations[/code], [code]export_dialog[/code],
+	## keys: [code]processed_images[/code], [code]export_dialog[/code],
 	## [code]export_paths[/code], [code]project[/code][br]
+	## (Note: [code]processed_images[/code] is an array of ProcessedImage resource which further
+	## has parameters [param image] and [param duration])[br]
 	## If the value of [param tab] is not in [constant ExportTab] then the format will be added to
 	## both tabs. Returns the index of exporter, which can be used to remove exporter later.
 	func add_export_option(
@@ -712,6 +713,19 @@ class ImportAPI:
 		OpenSave.custom_import_names.erase(import_name)
 		OpenSave.custom_importer_scenes.erase(id)
 		ExtensionsApi.remove_action("ImportAPI", "add_import_option")
+
+
+## Gives access to palettes.
+class PaletteAPI:
+	## Creates and adds a new [Palette] with name [param palette_name] with [param data]
+	## in the form of a [Dictionary].
+	func create_palette_from_data(palette_name: String, data: Dictionary) -> void:
+		var palette := Palette.new(palette_name)
+		palette.deserialize_from_dictionary(data)
+		Palettes.save_palette(palette)
+		Palettes.palettes[palette_name] = palette
+		Palettes.select_palette(palette_name)
+		Palettes.new_palette_created.emit()
 
 
 ## Gives access to the basic commonly used signals.

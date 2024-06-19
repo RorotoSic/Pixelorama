@@ -5,6 +5,8 @@ enum Orientation { COLUMNS, ROWS, TAGS_BY_COLUMN, TAGS_BY_ROW }
 enum AnimationDirection { FORWARD, BACKWARDS, PING_PONG }
 ## See file_format_string, file_format_description, and ExportDialog.gd
 enum FileFormat { PNG, WEBP, JPEG, GIF, APNG, MP4, AVI, OGV, MKV, WEBM }
+enum { VISIBLE_LAYERS, SELECTED_LAYERS }
+enum ExportFrames { ALL_FRAMES, SELECTED_FRAMES }
 
 ## This path is used to temporarily store png files that FFMPEG uses to convert them to video
 const TEMP_PATH := "user://tmp"
@@ -23,6 +25,19 @@ var animated_formats := [
 var ffmpeg_formats := [
 	FileFormat.MP4, FileFormat.AVI, FileFormat.OGV, FileFormat.MKV, FileFormat.WEBM
 ]
+## A dictionary of [enum FileFormat] enums and their file extensions and short descriptions.
+var file_format_dictionary := {
+	FileFormat.PNG: [".png", "PNG Image"],
+	FileFormat.WEBP: [".webp", "WebP Image"],
+	FileFormat.JPEG: [".jpg", "JPG Image"],
+	FileFormat.GIF: [".gif", "GIF Image"],
+	FileFormat.APNG: [".apng", "APNG Image"],
+	FileFormat.MP4: [".mp4", "MPEG-4 Video"],
+	FileFormat.AVI: [".avi", "AVI Video"],
+	FileFormat.OGV: [".ogv", "OGV Video"],
+	FileFormat.MKV: [".mkv", "Matroska Video"],
+	FileFormat.WEBM: [".webm", "WebM Video"],
+}
 
 ## A dictionary of custom exporter generators (received from extensions)
 var custom_file_formats := {}
@@ -31,6 +46,7 @@ var custom_exporter_generators := {}
 var current_tab := ExportTab.IMAGE
 ## All frames and their layers processed/blended into images
 var processed_images: Array[ProcessedImage] = []
+var export_json := false
 var split_layers := false
 
 # Spritesheet options
@@ -256,13 +272,15 @@ func process_animation(project := Global.current_project) -> void:
 
 func _calculate_frames(project := Global.current_project) -> Array[Frame]:
 	var frames: Array[Frame] = []
-	if frame_current_tag > 1:  # Specific tag
-		var frame_start: int = project.animation_tags[frame_current_tag - 2].from
-		var frame_end: int = project.animation_tags[frame_current_tag - 2].to
+	if frame_current_tag >= ExportFrames.size():  # Export a specific tag
+		var frame_start: int = project.animation_tags[frame_current_tag - ExportFrames.size()].from
+		var frame_end: int = project.animation_tags[frame_current_tag - ExportFrames.size()].to
 		frames = project.frames.slice(frame_start - 1, frame_end, 1, true)
-	elif frame_current_tag == 1:  # Selected frames
+	elif frame_current_tag == ExportFrames.SELECTED_FRAMES:
 		for cel in project.selected_cels:
-			frames.append(project.frames[cel[0]])
+			var frame := project.frames[cel[0]]
+			if not frames.has(frame):
+				frames.append(frame)
 	else:  # All frames
 		frames = project.frames.duplicate()
 
@@ -334,7 +352,16 @@ func export_processed_images(
 			return false
 
 	_scale_processed_images()
-
+	if export_json:
+		var json := JSON.stringify(project.serialize())
+		var json_file_name := project.name + ".json"
+		if OS.has_feature("web"):
+			var json_buffer := json.to_utf8_buffer()
+			JavaScriptBridge.download_buffer(json_buffer, json_file_name, "application/json")
+		else:
+			var json_path := project.export_directory_path.path_join(json_file_name)
+			var json_file := FileAccess.open(json_path, FileAccess.WRITE)
+			json_file.store_string(json)
 	# override if a custom export is chosen
 	if project.file_format in custom_exporter_generators.keys():
 		# Divert the path to the custom exporter instead
@@ -520,64 +547,32 @@ func _scale_processed_images() -> void:
 
 
 func file_format_string(format_enum: int) -> String:
-	match format_enum:
-		FileFormat.PNG:
-			return ".png"
-		FileFormat.WEBP:
-			return ".webp"
-		FileFormat.JPEG:
-			return ".jpg"
-		FileFormat.GIF:
-			return ".gif"
-		FileFormat.APNG:
-			return ".apng"
-		FileFormat.MP4:
-			return ".mp4"
-		FileFormat.AVI:
-			return ".avi"
-		FileFormat.OGV:
-			return ".ogv"
-		FileFormat.MKV:
-			return ".mkv"
-		FileFormat.WEBM:
-			return ".webm"
-		_:
-			# If a file format description is not found, try generating one
-			if custom_exporter_generators.has(format_enum):
-				return custom_exporter_generators[format_enum][1]
-			return ""
+	if file_format_dictionary.has(format_enum):
+		return file_format_dictionary[format_enum][0]
+	# If a file format description is not found, try generating one
+	if custom_exporter_generators.has(format_enum):
+		return custom_exporter_generators[format_enum][1]
+	return ""
 
 
 func file_format_description(format_enum: int) -> String:
-	match format_enum:
-		# these are overrides
-		# (if they are not given, they will generate themselves based on the enum key name)
-		FileFormat.PNG:
-			return "PNG Image"
-		FileFormat.WEBP:
-			return "WEBP Image"
-		FileFormat.JPEG:
-			return "JPEG Image"
-		FileFormat.GIF:
-			return "GIF Image"
-		FileFormat.APNG:
-			return "APNG Image"
-		FileFormat.MP4:
-			return "MPEG-4 Video"
-		FileFormat.AVI:
-			return "AVI Video"
-		FileFormat.OGV:
-			return "OGV Video"
-		FileFormat.MKV:
-			return "Matroska Video"
-		FileFormat.WEBM:
-			return "WebM Video"
-		_:
-			# If a file format description is not found, try generating one
-			for key in custom_file_formats.keys():
-				if custom_file_formats[key] == format_enum:
-					return str(key.capitalize())
-			return ""
+	if file_format_dictionary.has(format_enum):
+		return file_format_dictionary[format_enum][1]
+	# If a file format description is not found, try generating one
+	for key in custom_file_formats.keys():
+		if custom_file_formats[key] == format_enum:
+			return str(key.capitalize())
+	return ""
+
+
+func get_file_format_from_extension(file_extension: String) -> FileFormat:
+	if not file_extension.begins_with("."):
+		file_extension = "." + file_extension
+	for format: FileFormat in file_format_dictionary:
+		var extension: String = file_format_dictionary[format][0]
+		if file_extension.to_lower() == extension:
+			return format
+	return FileFormat.PNG
 
 
 ## True when exporting to .gif, .apng and video
@@ -601,6 +596,8 @@ func is_ffmpeg_installed() -> bool:
 
 func _create_export_path(multifile: bool, project: Project, frame := 0, layer := -1) -> String:
 	var path := project.file_name
+	if path.contains("{name}"):
+		path = path.replace("{name}", project.name)
 	# Only append frame number when there are multiple files exported
 	if multifile:
 		var path_extras := ""
@@ -651,9 +648,37 @@ func _get_proccessed_image_animation_tag_and_start_id(
 func _blend_layers(
 	image: Image, frame: Frame, origin := Vector2i.ZERO, project := Global.current_project
 ) -> void:
-	if export_layers == 0:
-		DrawingAlgos.blend_layers(image, frame, origin, project)
-	elif export_layers == 1:
+	if export_layers == VISIBLE_LAYERS:
+		var load_result_from_pxo := not project.save_path.is_empty() and not project.has_changed
+		if load_result_from_pxo:
+			# Attempt to read the image data directly from the pxo file, without having to blend
+			# This is mostly useful for when running Pixelorama in headless mode
+			# To handle exporting from a CLI
+			var zip_reader := ZIPReader.new()
+			var err := zip_reader.open(project.save_path)
+			if err == OK:
+				var frame_index := project.frames.find(frame) + 1
+				var image_path := "image_data/final_images/%s" % frame_index
+				if zip_reader.file_exists(image_path):
+					# "Include blended" must be toggled on when saving the pxo file
+					# in order for this to work.
+					var image_data := zip_reader.read_file(image_path)
+					var loaded_image := Image.create_from_data(
+						project.size.x,
+						project.size.y,
+						image.has_mipmaps(),
+						image.get_format(),
+						image_data
+					)
+					image.blend_rect(loaded_image, Rect2i(Vector2i.ZERO, project.size), origin)
+				else:
+					load_result_from_pxo = false
+				zip_reader.close()
+			else:
+				load_result_from_pxo = false
+		if not load_result_from_pxo:
+			DrawingAlgos.blend_layers(image, frame, origin, project)
+	elif export_layers == SELECTED_LAYERS:
 		DrawingAlgos.blend_layers(image, frame, origin, project, false, true)
 	else:
 		var layer := project.layers[export_layers - 2]

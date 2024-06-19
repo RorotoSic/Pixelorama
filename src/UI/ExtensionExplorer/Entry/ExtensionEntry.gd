@@ -1,7 +1,6 @@
 class_name ExtensionEntry
 extends Panel
 
-var extension_container: VBoxContainer
 var thumbnail := ""
 var download_link := ""
 var download_path := ""
@@ -9,6 +8,7 @@ var tags := PackedStringArray()
 var is_update := false  ## An update instead of download
 
 # node references used in this script
+@onready var extensions := Global.control.get_node("Extensions") as Extensions
 @onready var ext_name := %ExtensionName as Label
 @onready var ext_discription := %ExtensionDescription as TextEdit
 @onready var small_picture := %Picture as TextureButton
@@ -47,7 +47,8 @@ func set_info(info: Dictionary, extension_path: String) -> void:
 
 func _on_RequestDelay_timeout() -> void:
 	request_delay.queue_free()  # node no longer needed
-	thumbnail_request.request(thumbnail)  # image
+	if not thumbnail.is_empty():
+		thumbnail_request.request(thumbnail)  # image
 
 
 func _on_ImageRequest_request_completed(
@@ -55,18 +56,9 @@ func _on_ImageRequest_request_completed(
 ) -> void:
 	# Update the received image
 	thumbnail_request.queue_free()
-	var image := Image.new()
-	# for images on internet there is a hagh chance that extension is wrong
-	# so check all of them even if they give error
-	var err := image.load_png_from_buffer(body)
-	if err != OK:
-		var err_a := image.load_jpg_from_buffer(body)
-		if err_a != OK:
-			var err_b := image.load_webp_from_buffer(body)
-			if err_b != OK:
-				var err_c := image.load_tga_from_buffer(body)
-				if err_c != OK:
-					image.load_bmp_from_buffer(body)
+	var image := OpenSave.load_image_from_buffer(body)
+	if image.is_empty():
+		return
 	var texture := ImageTexture.create_from_image(image)
 	small_picture.texture_normal = texture
 	small_picture.pressed.connect(enlarge_thumbnail.bind(texture))
@@ -85,14 +77,14 @@ func _on_DownloadRequest_request_completed(
 ) -> void:
 	if result == HTTPRequest.RESULT_SUCCESS:
 		# Add extension
-		extension_container.install_extension(download_path)
+		extensions.install_extension(download_path)
 		if is_update:
 			is_update = false
 		announce_done(true)
 	else:
 		alert_dialog.get_node("Text").text = (
 			str(
-				"Unable to Download extension...\nHttp Code: ",
+				"Unable to download extension.\nHttp Code: ",
 				result,
 				" (",
 				error_string(result),
@@ -111,7 +103,7 @@ func announce_done(success: bool) -> void:
 	down_button.disabled = false
 	if success:
 		done_label.visible = true
-		down_button.text = "Re-Download"
+		down_button.text = "Redownload"
 		done_label.get_node("DoneDelay").start()
 
 
@@ -130,15 +122,15 @@ func tags_match(tag_array: PackedStringArray) -> bool:
 
 ## Updates the entry node's UI if it has an update available
 func change_button_if_updatable(extension_name: String, new_version: float) -> void:
-	for extension in extension_container.extensions.keys():
-		if extension_container.extensions[extension].file_name == extension_name:
-			var old_version = str_to_var(extension_container.extensions[extension].version)
+	for extension in extensions.extensions.keys():
+		if extensions.extensions[extension].file_name == extension_name:
+			var old_version = str_to_var(extensions.extensions[extension].version)
 			if typeof(old_version) == TYPE_FLOAT:
 				if new_version > old_version:
 					down_button.text = "Update"
 					is_update = true
 				elif new_version == old_version:
-					down_button.text = "Re-Download"
+					down_button.text = "Redownload"
 
 
 ## Show an enlarged version of the thumbnail

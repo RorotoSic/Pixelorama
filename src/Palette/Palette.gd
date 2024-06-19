@@ -1,6 +1,8 @@
 class_name Palette
 extends RefCounted
 
+signal data_changed
+
 const DEFAULT_WIDTH := 8
 const DEFAULT_HEIGHT := 8
 
@@ -101,11 +103,19 @@ func deserialize(json_string: String) -> void:
 	var data = test_json_conv.get_data()
 	if not typeof(data) == TYPE_DICTIONARY:
 		return
+	deserialize_from_dictionary(data)
+
+
+func deserialize_from_dictionary(data: Dictionary) -> void:
 	if data.has("comment"):
 		comment = data.comment
 	if data.has("colors"):
 		for color_data in data.colors:
-			var color := str_to_var("Color" + color_data["color"]) as Color
+			var color: Color
+			if typeof(color_data["color"]) == TYPE_STRING:
+				color = str_to_var("Color" + color_data["color"])
+			elif typeof(color_data["color"]) == TYPE_COLOR:
+				color = color_data["color"]
 			var index := color_data["index"] as int
 			var palette_color := PaletteColor.new(color, index)
 			colors[index] = palette_color
@@ -172,6 +182,7 @@ func add_color(new_color: Color, start_index := 0) -> void:
 		if not colors.has(i):
 			colors[i] = PaletteColor.new(new_color, i)
 			break
+	data_changed.emit()
 
 
 ## Returns color at index or null if no color exists
@@ -186,11 +197,13 @@ func get_color(index: int):
 func set_color(index: int, new_color: Color) -> void:
 	if colors.has(index):
 		colors[index].color = new_color
+		data_changed.emit()
 
 
 ## Removes a color at the specified index
 func remove_color(index: int) -> void:
 	colors.erase(index)
+	data_changed.emit()
 
 
 ## Inserts a color to the specified index
@@ -200,12 +213,13 @@ func insert_color(index: int, new_color: Color) -> void:
 	# If insert happens on non empty swatch recursively move the original color
 	# and every other color to its right one swatch to right
 	if colors[index] != null:
-		move_right(index)
+		_move_right(index)
 	colors[index] = c
+	data_changed.emit()
 
 
 ## Recursive function that moves every color to right until one of them is moved to empty swatch
-func move_right(index: int) -> void:
+func _move_right(index: int) -> void:
 	# Moving colors to right would overflow the size of the palette
 	# so increase its height automatically
 	if index + 1 == colors_max:
@@ -214,7 +228,7 @@ func move_right(index: int) -> void:
 
 	# If swatch to right to this color is not empty move that color right too
 	if colors[index + 1] != null:
-		move_right(index + 1)
+		_move_right(index + 1)
 
 	colors[index + 1] = colors[index]
 
@@ -237,6 +251,7 @@ func swap_colors(from_index: int, to_index: int) -> void:
 		colors[to_index].index = to_index
 		colors[from_index] = to_color
 		colors[from_index].index = from_index
+	data_changed.emit()
 
 
 ## Copies color
@@ -245,6 +260,7 @@ func copy_colors(from_index: int, to_index: int) -> void:
 	if colors[from_index] != null:
 		colors[to_index] = colors[from_index].duplicate()
 		colors[to_index].index = to_index
+	data_changed.emit()
 
 
 func reverse_colors() -> void:
@@ -254,6 +270,7 @@ func reverse_colors() -> void:
 	for i in reversed_colors.size():
 		reversed_colors[i].index = i
 		colors[i] = reversed_colors[i]
+	data_changed.emit()
 
 
 func sort(option: Palettes.SortOptions) -> void:
@@ -279,6 +296,7 @@ func sort(option: Palettes.SortOptions) -> void:
 	for i in sorted_colors.size():
 		sorted_colors[i].index = i
 		colors[i] = sorted_colors[i]
+	data_changed.emit()
 
 
 ## True if all swatches are occupied

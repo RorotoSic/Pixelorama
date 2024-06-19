@@ -15,6 +15,8 @@ var zen_mode := false
 
 # Dialogs
 var new_image_dialog := Dialog.new("res://src/UI/Dialogs/CreateNewImage.tscn")
+var project_properties_dialog := Dialog.new("res://src/UI/Dialogs/ProjectProperties.tscn")
+var preferences_dialog := Dialog.new("res://src/Preferences/PreferencesDialog.tscn")
 var offset_image_dialog := Dialog.new("res://src/UI/Dialogs/ImageEffects/OffsetImage.tscn")
 var scale_image_dialog := Dialog.new("res://src/UI/Dialogs/ImageEffects/ScaleImage.tscn")
 var resize_canvas_dialog := Dialog.new("res://src/UI/Dialogs/ImageEffects/ResizeCanvas.tscn")
@@ -27,6 +29,8 @@ var drop_shadow_dialog := Dialog.new("res://src/UI/Dialogs/ImageEffects/DropShad
 var hsv_dialog := Dialog.new("res://src/UI/Dialogs/ImageEffects/HSVDialog.tscn")
 var gradient_dialog := Dialog.new("res://src/UI/Dialogs/ImageEffects/GradientDialog.tscn")
 var gradient_map_dialog := Dialog.new("res://src/UI/Dialogs/ImageEffects/GradientMapDialog.tscn")
+var palettize_dialog := Dialog.new("res://src/UI/Dialogs/ImageEffects/PalettizeDialog.tscn")
+var pixelize_dialog := Dialog.new("res://src/UI/Dialogs/ImageEffects/PixelizeDialog.tscn")
 var posterize_dialog := Dialog.new("res://src/UI/Dialogs/ImageEffects/Posterize.tscn")
 var shader_effect_dialog := Dialog.new("res://src/UI/Dialogs/ImageEffects/ShaderEffect.tscn")
 var manage_layouts_dialog := Dialog.new("res://src/UI/Dialogs/ManageLayouts.tscn")
@@ -35,13 +39,14 @@ var about_dialog := Dialog.new("res://src/UI/Dialogs/AboutDialog.tscn")
 
 @onready var main_ui := Global.control.find_child("DockableContainer") as DockableContainer
 @onready var ui_elements := main_ui.get_children()
-@onready var file_menu: PopupMenu = $MenuBar/File
-@onready var edit_menu: PopupMenu = $MenuBar/Edit
-@onready var select_menu: PopupMenu = $MenuBar/Select
-@onready var image_menu: PopupMenu = $MenuBar/Image
-@onready var view_menu: PopupMenu = $MenuBar/View
-@onready var window_menu: PopupMenu = $MenuBar/Window
-@onready var help_menu: PopupMenu = $MenuBar/Help
+@onready var file_menu := $MarginContainer/HBoxContainer/MenuBar/File as PopupMenu
+@onready var edit_menu := $MarginContainer/HBoxContainer/MenuBar/Edit as PopupMenu
+@onready var select_menu := $MarginContainer/HBoxContainer/MenuBar/Select as PopupMenu
+@onready var image_menu := $MarginContainer/HBoxContainer/MenuBar/Image as PopupMenu
+@onready var effects_menu := $MarginContainer/HBoxContainer/MenuBar/Effects as PopupMenu
+@onready var view_menu := $MarginContainer/HBoxContainer/MenuBar/View as PopupMenu
+@onready var window_menu := $MarginContainer/HBoxContainer/MenuBar/Window as PopupMenu
+@onready var help_menu := $MarginContainer/HBoxContainer/MenuBar/Help as PopupMenu
 
 @onready var greyscale_vision: ColorRect = main_ui.find_child("GreyscaleVision")
 @onready var tile_mode_submenu := PopupMenu.new()
@@ -49,7 +54,7 @@ var about_dialog := Dialog.new("res://src/UI/Dialogs/AboutDialog.tscn")
 @onready var panels_submenu := PopupMenu.new()
 @onready var layouts_submenu := PopupMenu.new()
 @onready var recent_projects_submenu := PopupMenu.new()
-@onready var current_frame_mark := $HBoxContainer/CurrentFrameMark as Label
+@onready var current_frame_mark := %CurrentFrameMark as Label
 
 
 class Dialog:
@@ -84,6 +89,7 @@ func _ready() -> void:
 	_setup_view_menu()
 	_setup_window_menu()
 	_setup_image_menu()
+	_setup_effects_menu()
 	_setup_select_menu()
 	_setup_help_menu()
 
@@ -215,32 +221,55 @@ func _setup_view_menu() -> void:
 	view_menu.hide_on_checkable_item_selection = false
 	view_menu.id_pressed.connect(view_menu_id_pressed)
 
+	# Load settings from the config file
 	var draw_grid: bool = Global.config_cache.get_value("view_menu", "draw_grid", Global.draw_grid)
-	if draw_grid != Global.draw_grid:
-		_toggle_show_grid()
-
 	var draw_pixel_grid: bool = Global.config_cache.get_value(
 		"view_menu", "draw_pixel_grid", Global.draw_pixel_grid
 	)
-	if draw_pixel_grid != Global.draw_pixel_grid:
-		_toggle_show_pixel_grid()
-
 	var show_rulers: bool = Global.config_cache.get_value(
 		"view_menu", "show_rulers", Global.show_rulers
 	)
-	if show_rulers != Global.show_rulers:
-		_toggle_show_rulers()
-
 	var show_guides: bool = Global.config_cache.get_value(
 		"view_menu", "show_guides", Global.show_guides
 	)
 	var show_mouse_guides: bool = Global.config_cache.get_value(
 		"view_menu", "show_mouse_guides", Global.show_mouse_guides
 	)
+	var display_layer_effects: bool = Global.config_cache.get_value(
+		"view_menu", "display_layer_effects", Global.display_layer_effects
+	)
+	var snap_to_rectangular_grid_boundary: bool = Global.config_cache.get_value(
+		"view_menu", "snap_to_rectangular_grid_boundary", Global.snap_to_rectangular_grid_boundary
+	)
+	var snap_to_rectangular_grid_center: bool = Global.config_cache.get_value(
+		"view_menu", "snap_to_rectangular_grid_center", Global.snap_to_rectangular_grid_center
+	)
+	var snap_to_guides: bool = Global.config_cache.get_value(
+		"view_menu", "snap_to_guides", Global.snap_to_guides
+	)
+	var snap_to_perspective_guides: bool = Global.config_cache.get_value(
+		"view_menu", "snap_to_perspective_guides", Global.snap_to_perspective_guides
+	)
+	if draw_grid != Global.draw_grid:
+		_toggle_show_grid()
+	if draw_pixel_grid != Global.draw_pixel_grid:
+		_toggle_show_pixel_grid()
+	if show_rulers != Global.show_rulers:
+		_toggle_show_rulers()
 	if show_guides != Global.show_guides:
 		_toggle_show_guides()
 	if show_mouse_guides != Global.show_mouse_guides:
 		_toggle_show_mouse_guides()
+	if display_layer_effects != Global.display_layer_effects:
+		Global.display_layer_effects = display_layer_effects
+	if snap_to_rectangular_grid_boundary != Global.snap_to_rectangular_grid_boundary:
+		_snap_to_submenu_id_pressed(0)
+	if snap_to_rectangular_grid_center != Global.snap_to_rectangular_grid_center:
+		_snap_to_submenu_id_pressed(1)
+	if snap_to_guides != Global.snap_to_guides:
+		_snap_to_submenu_id_pressed(2)
+	if snap_to_perspective_guides != Global.snap_to_perspective_guides:
+		_snap_to_submenu_id_pressed(3)
 
 
 func _setup_tile_mode_submenu(item: String) -> void:
@@ -335,22 +364,11 @@ func populate_layouts_submenu() -> void:
 func _setup_image_menu() -> void:
 	# Order as in Global.ImageMenu enum
 	var image_menu_items := {
+		"Project Properties": "project_properties",
 		"Resize Canvas": "resize_canvas",
-		"Offset Image": "offset_image",
 		"Scale Image": "scale_image",
 		"Crop to Selection": "crop_to_selection",
 		"Crop to Content": "crop_to_content",
-		"Mirror Image": "mirror_image",
-		"Rotate Image": "rotate_image",
-		"Outline": "outline",
-		"Drop Shadow": "drop_shadow",
-		"Invert Colors": "invert_colors",
-		"Desaturation": "desaturation",
-		"Adjust Hue/Saturation/Value": "adjust_hsv",
-		"Posterize": "posterize",
-		"Gradient": "gradient",
-		"Gradient Map": "gradient_map",
-		# "Shader": ""
 	}
 	var i := 0
 	for item in image_menu_items:
@@ -358,6 +376,31 @@ func _setup_image_menu() -> void:
 		i += 1
 	image_menu.set_item_disabled(Global.ImageMenu.CROP_TO_SELECTION, true)
 	image_menu.id_pressed.connect(image_menu_id_pressed)
+
+
+func _setup_effects_menu() -> void:
+	# Order as in Global.EffectMenu enum
+	var menu_items := {
+		"Offset Image": "offset_image",
+		"Mirror Image": "mirror_image",
+		"Rotate Image": "rotate_image",
+		"Outline": "outline",
+		"Drop Shadow": "drop_shadow",
+		"Invert Colors": "invert_colors",
+		"Desaturation": "desaturation",
+		"Adjust Hue/Saturation/Value": "adjust_hsv",
+		"Palettize": "palettize",
+		"Pixelize": "pixelize",
+		"Posterize": "posterize",
+		"Gradient": "gradient",
+		"Gradient Map": "gradient_map",
+		# "Shader": ""
+	}
+	var i := 0
+	for item in menu_items:
+		_set_menu_shortcut(menu_items[item], effects_menu, i, item)
+		i += 1
+	effects_menu.id_pressed.connect(effects_menu_id_pressed)
 
 
 func _setup_select_menu() -> void:
@@ -528,7 +571,7 @@ func edit_menu_id_pressed(id: int) -> void:
 		Global.EditMenu.NEW_BRUSH:
 			Global.canvas.selection.new_brush()
 		Global.EditMenu.PREFERENCES:
-			_popup_dialog(Global.preferences_dialog)
+			preferences_dialog.popup()
 		_:
 			_handle_metadata(id, edit_menu)
 
@@ -721,40 +764,50 @@ func _toggle_fullscreen() -> void:
 
 func image_menu_id_pressed(id: int) -> void:
 	match id:
+		Global.ImageMenu.PROJECT_PROPERTIES:
+			project_properties_dialog.popup()
 		Global.ImageMenu.SCALE_IMAGE:
 			scale_image_dialog.popup()
-		Global.ImageMenu.OFFSET_IMAGE:
-			offset_image_dialog.popup()
 		Global.ImageMenu.CROP_TO_SELECTION:
 			DrawingAlgos.crop_to_selection()
 		Global.ImageMenu.CROP_TO_CONTENT:
 			DrawingAlgos.crop_to_content()
 		Global.ImageMenu.RESIZE_CANVAS:
 			resize_canvas_dialog.popup()
-		Global.ImageMenu.FLIP:
+
+
+func effects_menu_id_pressed(id: int) -> void:
+	match id:
+		Global.EffectsMenu.OFFSET_IMAGE:
+			offset_image_dialog.popup()
+		Global.EffectsMenu.FLIP:
 			mirror_image_dialog.popup()
-		Global.ImageMenu.ROTATE:
+		Global.EffectsMenu.ROTATE:
 			rotate_image_dialog.popup()
-		Global.ImageMenu.INVERT_COLORS:
+		Global.EffectsMenu.INVERT_COLORS:
 			invert_colors_dialog.popup()
-		Global.ImageMenu.DESATURATION:
+		Global.EffectsMenu.DESATURATION:
 			desaturate_dialog.popup()
-		Global.ImageMenu.OUTLINE:
+		Global.EffectsMenu.OUTLINE:
 			outline_dialog.popup()
-		Global.ImageMenu.DROP_SHADOW:
+		Global.EffectsMenu.DROP_SHADOW:
 			drop_shadow_dialog.popup()
-		Global.ImageMenu.HSV:
+		Global.EffectsMenu.HSV:
 			hsv_dialog.popup()
-		Global.ImageMenu.GRADIENT:
+		Global.EffectsMenu.GRADIENT:
 			gradient_dialog.popup()
-		Global.ImageMenu.GRADIENT_MAP:
+		Global.EffectsMenu.GRADIENT_MAP:
 			gradient_map_dialog.popup()
-		Global.ImageMenu.POSTERIZE:
+		Global.EffectsMenu.PALETTIZE:
+			palettize_dialog.popup()
+		Global.EffectsMenu.PIXELIZE:
+			pixelize_dialog.popup()
+		Global.EffectsMenu.POSTERIZE:
 			posterize_dialog.popup()
-		#Global.ImageMenu.SHADER:
+		#Global.EffectsMenu.SHADER:
 		#shader_effect_dialog.popup()
 		_:
-			_handle_metadata(id, image_menu)
+			_handle_metadata(id, effects_menu)
 
 
 func select_menu_id_pressed(id: int) -> void:

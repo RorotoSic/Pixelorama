@@ -4,7 +4,13 @@ extends Image
 var invert_shader := preload("res://src/Shaders/Effects/Invert.gdshader")
 
 
-func is_pixel_selected(pixel: Vector2i) -> bool:
+func is_pixel_selected(pixel: Vector2i, calculate_offset := true) -> bool:
+	var selection_position: Vector2i = Global.canvas.selection.big_bounding_rectangle.position
+	if calculate_offset:
+		if selection_position.x < 0:
+			pixel.x -= selection_position.x
+		if selection_position.y < 0:
+			pixel.y -= selection_position.y
 	if pixel.x < 0 or pixel.y < 0 or pixel.x >= get_width() or pixel.y >= get_height():
 		return false
 	var selected: bool = get_pixelv(pixel).a > 0
@@ -90,6 +96,17 @@ func invert() -> void:
 func return_cropped_copy(size: Vector2i) -> SelectionMap:
 	var selection_map_copy := SelectionMap.new()
 	selection_map_copy.copy_from(self)
+	var diff := Vector2i.ZERO
+	var selection_position: Vector2i = Global.canvas.selection.big_bounding_rectangle.position
+	if selection_position.x < 0:
+		diff.x += selection_position.x
+	if selection_position.y < 0:
+		diff.y += selection_position.y
+	if diff != Vector2i.ZERO:
+		# If there are pixels out of bounds on the negative side (left & up),
+		# move them before resizing
+		selection_map_copy.fill(Color(0))
+		selection_map_copy.blit_rect(self, Rect2i(Vector2i.ZERO, get_size()), diff)
 	selection_map_copy.crop(size.x, size.y)
 	return selection_map_copy
 

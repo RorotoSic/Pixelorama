@@ -54,8 +54,8 @@ func _ready() -> void:
 	sort_button_popup.add_item("Sort by blue", Palettes.SortOptions.BLUE)
 	sort_button_popup.add_item("Sort by alpha", Palettes.SortOptions.ALPHA)
 	Palettes.palette_selected.connect(select_palette)
+	Palettes.new_palette_created.connect(_new_palette_created)
 	Palettes.new_palette_imported.connect(setup_palettes_selector)
-	Tools.color_changed.connect(_color_changed)
 	sort_button_popup.id_pressed.connect(sort_pressed)
 
 	setup_palettes_selector()
@@ -113,13 +113,13 @@ func redraw_current_palette() -> void:
 
 
 func toggle_add_delete_buttons() -> void:
-	add_color_button.disabled = Palettes.current_palette_is_full()
+	add_color_button.disabled = Palettes.current_palette.is_full()
 	if add_color_button.disabled:
 		add_color_button.mouse_default_cursor_shape = CURSOR_FORBIDDEN
 	else:
 		add_color_button.mouse_default_cursor_shape = CURSOR_POINTING_HAND
-	delete_color_button.disabled = Palettes.current_palette_is_empty()
-	sort_button.disabled = Palettes.current_palette_is_empty()
+	delete_color_button.disabled = Palettes.current_palette.is_empty()
+	sort_button.disabled = Palettes.current_palette.is_empty()
 	if delete_color_button.disabled:
 		delete_color_button.mouse_default_cursor_shape = CURSOR_FORBIDDEN
 		sort_button.mouse_default_cursor_shape = CURSOR_FORBIDDEN
@@ -195,8 +195,6 @@ func _on_create_palette_dialog_saved(
 	Palettes.create_new_palette(
 		preset, palette_name, comment, width, height, add_alpha_colors, colors_from
 	)
-	setup_palettes_selector()
-	redraw_current_palette()
 
 
 func _on_edit_palette_dialog_saved(
@@ -265,18 +263,9 @@ func _on_edit_palette_dialog_deleted(permanent: bool) -> void:
 	redraw_current_palette()
 
 
-func _color_changed(_color: Color, button: int) -> void:
-	if not hidden_color_picker.get_popup().visible and is_instance_valid(Palettes.current_palette):
-		# Unselect swatches when tools color is changed
-		var swatch_to_unselect := -1
-		if button == MOUSE_BUTTON_LEFT:
-			swatch_to_unselect = Palettes.left_selected_color
-			Palettes.left_selected_color = -1
-		elif button == MOUSE_BUTTON_RIGHT:
-			swatch_to_unselect = Palettes.right_selected_color
-			Palettes.right_selected_color = -1
-
-		palette_grid.unselect_swatch(button, swatch_to_unselect)
+func _new_palette_created() -> void:
+	setup_palettes_selector()
+	redraw_current_palette()
 
 
 func _on_edit_palette_dialog_exported(path := "") -> void:

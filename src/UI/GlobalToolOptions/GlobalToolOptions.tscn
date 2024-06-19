@@ -1,4 +1,4 @@
-[gd_scene load_steps=21 format=3 uid="uid://wo0hqxkst808"]
+[gd_scene load_steps=23 format=3 uid="uid://wo0hqxkst808"]
 
 [ext_resource type="Texture2D" uid="uid://cjrokejjsp5dm" path="res://assets/graphics/misc/horizontal_mirror_off.png" id="1"]
 [ext_resource type="Texture2D" uid="uid://hiduvaa73fr6" path="res://assets/graphics/misc/vertical_mirror_off.png" id="2"]
@@ -22,8 +22,14 @@ action = &"vertical_mirror"
 [sub_resource type="Shortcut" id="Shortcut_ai7qc"]
 events = [SubResource("InputEventAction_24etr")]
 
-[sub_resource type="InputEventAction" id="InputEventAction_ebgk6"]
+[sub_resource type="InputEventAction" id="InputEventAction_eokfu"]
 action = &"pixel_perfect"
+
+[sub_resource type="Shortcut" id="Shortcut_7kmom"]
+events = [SubResource("InputEventAction_eokfu")]
+
+[sub_resource type="InputEventAction" id="InputEventAction_ebgk6"]
+action = &"alpha_lock"
 
 [sub_resource type="Shortcut" id="Shortcut_vcyug"]
 events = [SubResource("InputEventAction_ebgk6")]
@@ -112,7 +118,7 @@ tooltip_text = "Pixel Perfect
 Makes lines smooth by removing the extra pixels on the edges"
 mouse_default_cursor_shape = 2
 toggle_mode = true
-shortcut = SubResource("Shortcut_vcyug")
+shortcut = SubResource("Shortcut_7kmom")
 
 [node name="TextureRect" type="TextureRect" parent="ScrollContainer/CenterContainer/GridContainer/PixelPerfect"]
 layout_mode = 0
@@ -286,6 +292,8 @@ texture = ExtResource("7")
 expand_mode = 1
 
 [node name="LimitsHeader" type="HBoxContainer" parent="DynamicsPanel/VBoxContainer"]
+unique_name_in_owner = true
+visible = false
 layout_mode = 2
 
 [node name="Label" type="Label" parent="DynamicsPanel/VBoxContainer/LimitsHeader"]
@@ -301,12 +309,14 @@ size_flags_horizontal = 3
 layout_mode = 2
 columns = 3
 
-[node name="AlphaLabel" type="Label" parent="DynamicsPanel/VBoxContainer/LimitContainer"]
+[node name="AlphaLabel" type="Label" parent="DynamicsPanel/VBoxContainer/LimitContainer" groups=["VisibleOnAlpha"]]
+visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Alpha"
 
-[node name="AlphaMin" type="TextureProgressBar" parent="DynamicsPanel/VBoxContainer/LimitContainer"]
+[node name="AlphaMin" type="TextureProgressBar" parent="DynamicsPanel/VBoxContainer/LimitContainer" groups=["VisibleOnAlpha"]]
+visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 focus_mode = 2
@@ -324,7 +334,8 @@ script = ExtResource("5")
 prefix = "Start"
 snap_step = 0.1
 
-[node name="AlphaMax" type="TextureProgressBar" parent="DynamicsPanel/VBoxContainer/LimitContainer"]
+[node name="AlphaMax" type="TextureProgressBar" parent="DynamicsPanel/VBoxContainer/LimitContainer" groups=["VisibleOnAlpha"]]
+visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 focus_mode = 2
@@ -342,12 +353,14 @@ script = ExtResource("5")
 prefix = "End"
 snap_step = 0.1
 
-[node name="SizeLabel" type="Label" parent="DynamicsPanel/VBoxContainer/LimitContainer"]
+[node name="SizeLabel" type="Label" parent="DynamicsPanel/VBoxContainer/LimitContainer" groups=["VisibleOnSize"]]
+visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Size"
 
-[node name="SizeMin" type="TextureProgressBar" parent="DynamicsPanel/VBoxContainer/LimitContainer"]
+[node name="SizeMin" type="TextureProgressBar" parent="DynamicsPanel/VBoxContainer/LimitContainer" groups=["VisibleOnSize"]]
+visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 focus_mode = 2
@@ -364,7 +377,8 @@ stretch_margin_bottom = 3
 script = ExtResource("5")
 prefix = "Start"
 
-[node name="SizeMax" type="TextureProgressBar" parent="DynamicsPanel/VBoxContainer/LimitContainer"]
+[node name="SizeMax" type="TextureProgressBar" parent="DynamicsPanel/VBoxContainer/LimitContainer" groups=["VisibleOnSize"]]
+visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 focus_mode = 2
@@ -382,6 +396,8 @@ script = ExtResource("5")
 prefix = "End"
 
 [node name="ThresholdsHeader" type="HBoxContainer" parent="DynamicsPanel/VBoxContainer"]
+unique_name_in_owner = true
+visible = false
 layout_mode = 2
 
 [node name="Label" type="Label" parent="DynamicsPanel/VBoxContainer/ThresholdsHeader"]
@@ -397,11 +413,13 @@ size_flags_horizontal = 3
 layout_mode = 2
 columns = 2
 
-[node name="ThresholdPressureLabel" type="Label" parent="DynamicsPanel/VBoxContainer/ThresholdContainer"]
+[node name="ThresholdPressureLabel" type="Label" parent="DynamicsPanel/VBoxContainer/ThresholdContainer" groups=["VisibleOnPressure"]]
+visible = false
 layout_mode = 2
 text = "Pressure"
 
-[node name="ThresholdPressure" parent="DynamicsPanel/VBoxContainer/ThresholdContainer" instance=ExtResource("8")]
+[node name="ThresholdPressure" parent="DynamicsPanel/VBoxContainer/ThresholdContainer" groups=["VisibleOnPressure"] instance=ExtResource("8")]
+visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 start = 0.2
@@ -426,12 +444,15 @@ anchor_bottom = 0.0
 offset_right = 1.0
 offset_bottom = 23.0
 
-[node name="ThresholdVelocityLabel" type="Label" parent="DynamicsPanel/VBoxContainer/ThresholdContainer"]
+[node name="ThresholdVelocityLabel" type="Label" parent="DynamicsPanel/VBoxContainer/ThresholdContainer" groups=["VisibleOnVelocity"]]
+visible = false
 layout_mode = 2
 text = "Velocity"
 
-[node name="ThresholdVelocity" parent="DynamicsPanel/VBoxContainer/ThresholdContainer" instance=ExtResource("8")]
+[node name="ThresholdVelocity" parent="DynamicsPanel/VBoxContainer/ThresholdContainer" groups=["VisibleOnVelocity"] instance=ExtResource("8")]
+visible = false
 layout_mode = 2
+size_flags_horizontal = 3
 start = 0.2
 end = 0.8
 

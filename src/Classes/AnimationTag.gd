@@ -16,16 +16,11 @@ extends RefCounted
 ## Here is an example of how a new tag may be created ([b]with[/b] undo-redo functionality)
 ## [codeblock]
 ##func create_tag(tag_name: StringName, color: Color, from: int, to: int):
-##    var new_animation_tags := Global.current_project.animation_tags.duplicate()
+##    var new_animation_tags: Array[AnimationTag] = []
 ##    # Loop through the tags to create new classes for them, so that they won't be the same
 ##    # as Global.current_project.animation_tags's classes. Needed for undo/redo to work properly.
-##    for i in new_animation_tags.size():
-##        new_animation_tags[i] = AnimationTag.new(
-##            new_animation_tags[i].name,
-##            new_animation_tags[i].color,
-##            new_animation_tags[i].from,
-##            new_animation_tags[i].to
-##        )
+##    for tag in Global.current_project.animation_tags:
+##        new_animation_tags.append(tag.duplicate())
 ##
 ##    new_animation_tags.append(AnimationTag.new(tag_name, color, from, to))
 ##
@@ -49,6 +44,7 @@ var name: String  ## Name of tag
 var color: Color  ## Color of tag
 var from: int  ## First frame number in the tag (first frame in timeline is numbered 1)
 var to: int  ## First frame number in the tag (first frame in timeline is numbered 1)
+var user_data := ""  ## User defined data, set in the tag properties.
 
 
 ## Class Constructor (used as [code]AnimationTag.new(name, color, from, to)[/code])
@@ -60,7 +56,16 @@ func _init(_name: String, _color: Color, _from: int, _to: int) -> void:
 
 
 func serialize() -> Dictionary:
-	return {"name": name, "color": color.to_html(), "from": from, "to": to}
+	var dict := {"name": name, "color": color.to_html(), "from": from, "to": to}
+	if not user_data.is_empty():
+		dict["user_data"] = user_data
+	return dict
+
+
+func duplicate() -> AnimationTag:
+	var new_tag := AnimationTag.new(name, color, from, to)
+	new_tag.user_data = user_data
+	return new_tag
 
 
 func get_size() -> int:

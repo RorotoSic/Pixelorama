@@ -1,6 +1,6 @@
-[gd_scene load_steps=15 format=3 uid="uid://dbylw5k04ulp8"]
+[gd_scene load_steps=17 format=3 uid="uid://dbylw5k04ulp8"]
 
-[ext_resource type="Theme" uid="uid://cngbvfpwjoimv" path="res://assets/themes/dark/theme.tres" id="1"]
+[ext_resource type="Theme" uid="uid://bkb4syj8110el" path="res://assets/themes/dark/theme.tres" id="1"]
 [ext_resource type="Script" path="res://src/Main.gd" id="2"]
 [ext_resource type="PackedScene" uid="uid://bsgwar3l6qtgv" path="res://src/UI/TopMenuContainer/TopMenuContainer.tscn" id="3"]
 [ext_resource type="PackedScene" uid="uid://c8dsi6ggkqa7a" path="res://src/UI/UI.tscn" id="4"]
@@ -10,9 +10,11 @@
 [ext_resource type="PackedScene" uid="uid://bs3dnnvnxyp68" path="res://src/UI/Timeline/FrameProperties.tscn" id="9"]
 [ext_resource type="PackedScene" uid="uid://d4euwo633u33b" path="res://src/UI/Dialogs/SaveSprite.tscn" id="11"]
 [ext_resource type="PackedScene" uid="uid://b3aeqj2k58wdk" path="res://src/UI/Dialogs/OpenSprite.tscn" id="12"]
+[ext_resource type="PackedScene" uid="uid://d3dt1gdlf7hox" path="res://src/UI/Timeline/LayerProperties.tscn" id="13_4dhva"]
 [ext_resource type="PackedScene" uid="uid://c0nuukjakmai2" path="res://src/UI/Dialogs/TileModeOffsetsDialog.tscn" id="14"]
+[ext_resource type="PackedScene" uid="uid://c6fyrnyt3663o" path="res://src/UI/Timeline/TagProperties.tscn" id="14_fw6cf"]
+[ext_resource type="Script" path="res://src/HandleExtensions.gd" id="15_v0k2h"]
 [ext_resource type="PackedScene" uid="uid://clbjfkdupw52l" path="res://src/UI/Timeline/CelProperties.tscn" id="17_ucs64"]
-[ext_resource type="PackedScene" uid="uid://b3hkjj3s6pe4x" path="res://src/Preferences/PreferencesDialog.tscn" id="32"]
 [ext_resource type="PackedScene" uid="uid://clgu8wb5o6oup" path="res://src/UI/Dialogs/ExportDialog.tscn" id="39"]
 
 [node name="Control" type="Control"]
@@ -53,8 +55,6 @@ mouse_filter = 2
 
 [node name="ExportDialog" parent="Dialogs" instance=ExtResource("39")]
 
-[node name="PreferencesDialog" parent="Dialogs" instance=ExtResource("32")]
-
 [node name="UnsavedCanvasDialog" type="ConfirmationDialog" parent="Dialogs"]
 title = "Unsaved Image"
 exclusive = false
@@ -77,6 +77,7 @@ popup_window = true
 dialog_text = "This is an error message!"
 
 [node name="BackupConfirmation" type="ConfirmationDialog" parent="Dialogs"]
+size = Vector2i(320, 200)
 popup_window = true
 dialog_text = "Autosaved project(s) from a crashed session were found.
 Do you want to recover the data?"
@@ -86,10 +87,20 @@ dialog_autowrap = true
 
 [node name="FrameProperties" parent="Dialogs" instance=ExtResource("9")]
 
+[node name="LayerProperties" parent="Dialogs" instance=ExtResource("13_4dhva")]
+
+[node name="TagProperties" parent="Dialogs" instance=ExtResource("14_fw6cf")]
+
 [node name="TileModeOffsetsDialog" parent="Dialogs" instance=ExtResource("14")]
+
+[node name="DownloadImageConfirmationDialog" type="ConfirmationDialog" parent="Dialogs"]
+size = Vector2i(400, 200)
+dialog_text = "Do you want to download the image from %s?"
+dialog_autowrap = true
 
 [node name="Extensions" type="Control" parent="."]
 anchors_preset = 0
+script = ExtResource("15_v0k2h")
 
 [node name="LeftCursor" type="Sprite2D" parent="."]
 visible = false
@@ -97,9 +108,12 @@ visible = false
 [node name="RightCursor" type="Sprite2D" parent="."]
 visible = false
 
+[node name="ImageRequest" type="HTTPRequest" parent="."]
+
 [connection signal="files_selected" from="Dialogs/OpenSprite" to="." method="_on_OpenSprite_files_selected"]
 [connection signal="visibility_changed" from="Dialogs/OpenSprite" to="." method="_on_open_sprite_visibility_changed"]
 [connection signal="file_selected" from="Dialogs/SaveSprite" to="." method="_on_SaveSprite_file_selected"]
+[connection signal="visibility_changed" from="Dialogs/SaveSprite" to="." method="_on_save_sprite_visibility_changed"]
 [connection signal="visibility_changed" from="Dialogs/SaveSprite" to="." method="_can_draw_true"]
 [connection signal="confirmed" from="Dialogs/SaveSpriteHTML5" to="." method="save_project" binds= [""]]
 [connection signal="visibility_changed" from="Dialogs/SaveSpriteHTML5" to="." method="_can_draw_true"]
@@ -112,3 +126,5 @@ visible = false
 [connection signal="visibility_changed" from="Dialogs/QuitAndSaveDialog" to="." method="_can_draw_true"]
 [connection signal="visibility_changed" from="Dialogs/ErrorDialog" to="." method="_can_draw_true"]
 [connection signal="visibility_changed" from="Dialogs/BackupConfirmation" to="." method="_on_backup_confirmation_visibility_changed"]
+[connection signal="confirmed" from="Dialogs/DownloadImageConfirmationDialog" to="." method="_on_download_image_confirmation_dialog_confirmed"]
+[connection signal="request_completed" from="ImageRequest" to="." method="_on_image_request_request_completed"]

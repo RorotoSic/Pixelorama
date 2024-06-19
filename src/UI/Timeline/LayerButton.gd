@@ -15,6 +15,7 @@ var button_pressed := false:
 	get:
 		return main_button.button_pressed
 
+@onready var properties: AcceptDialog = Global.control.find_child("LayerProperties")
 @onready var main_button := %LayerMainButton as Button
 @onready var expand_button := %ExpandButton as BaseButton
 @onready var visibility_button := %VisibilityButton as BaseButton
@@ -32,6 +33,8 @@ func _ready() -> void:
 	main_button.hierarchy_depth_pixel_shift = HIERARCHY_DEPTH_PIXEL_SHIFT
 	Global.cel_switched.connect(func(): z_index = 1 if button_pressed else 0)
 	var layer := Global.current_project.layers[layer_index]
+	layer.name_changed.connect(func(): label.text = layer.name)
+	layer.visibility_changed.connect(update_buttons)
 	if layer is PixelLayer:
 		linked_button.visible = true
 	elif layer is GroupLayer:
@@ -42,7 +45,7 @@ func _ready() -> void:
 	for child in get_children():
 		if not child is Button:
 			continue
-		var texture = child.get_child(0)
+		var texture := child.get_child(0)
 		if not texture is TextureRect:
 			continue
 		texture.modulate = Global.modulate_icon_color
@@ -107,38 +110,40 @@ func _input(event: InputEvent) -> void:
 		_save_layer_name(line_edit.text)
 
 
-func _on_main_button_gui_input(event: InputEvent) -> void:
+func _on_layer_main_button_pressed() -> void:
 	var project := Global.current_project
+	Global.canvas.selection.transform_content_confirm()
+	var prev_curr_layer := project.current_layer
+	if Input.is_action_pressed(&"shift"):
+		var layer_diff_sign := signi(layer_index - prev_curr_layer)
+		if layer_diff_sign == 0:
+			layer_diff_sign = 1
+		for i in range(0, project.frames.size()):
+			for j in range(prev_curr_layer, layer_index + layer_diff_sign, layer_diff_sign):
+				var frame_layer := [i, j]
+				if !project.selected_cels.has(frame_layer):
+					project.selected_cels.append(frame_layer)
+		project.change_cel(-1, layer_index)
+	elif Input.is_action_pressed(&"ctrl"):
+		for i in range(0, project.frames.size()):
+			var frame_layer := [i, layer_index]
+			if !project.selected_cels.has(frame_layer):
+				project.selected_cels.append(frame_layer)
+		project.change_cel(-1, layer_index)
+	else:  # If the button is pressed without Shift or Control
+		_select_current_layer()
 
+
+func _on_main_button_gui_input(event: InputEvent) -> void:
 	if not event is InputEventMouseButton:
 		return
 	if event.button_index == MOUSE_BUTTON_LEFT:
-		Global.canvas.selection.transform_content_confirm()
-		var prev_curr_layer := project.current_layer
-		if Input.is_action_pressed(&"shift"):
-			var layer_diff_sign := signi(layer_index - prev_curr_layer)
-			if layer_diff_sign == 0:
-				layer_diff_sign = 1
-			for i in range(0, project.frames.size()):
-				for j in range(prev_curr_layer, layer_index + layer_diff_sign, layer_diff_sign):
-					var frame_layer := [i, j]
-					if !project.selected_cels.has(frame_layer):
-						project.selected_cels.append(frame_layer)
-			project.change_cel(-1, layer_index)
-		elif Input.is_action_pressed(&"ctrl"):
-			for i in range(0, project.frames.size()):
-				var frame_layer := [i, layer_index]
-				if !project.selected_cels.has(frame_layer):
-					project.selected_cels.append(frame_layer)
-			project.change_cel(-1, layer_index)
-		else:  # If the button is pressed without Shift or Control
-			_select_current_layer()
-
 		if event.double_click:
 			label.visible = false
 			line_edit.visible = true
 			line_edit.editable = true
 			line_edit.grab_focus()
+
 	elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
 		var layer := Global.current_project.layers[layer_index]
 		if not layer is GroupLayer:
@@ -153,7 +158,6 @@ func _save_layer_name(new_name: String) -> void:
 	label.visible = true
 	line_edit.visible = false
 	line_edit.editable = false
-	label.text = new_name
 	if layer_index < Global.current_project.layers.size():
 		Global.current_project.layers[layer_index].name = new_name
 
@@ -182,6 +186,11 @@ func _on_lock_button_pressed() -> void:
 	if Global.select_layer_on_button_click:
 		_select_current_layer()
 	_update_buttons_all_layers()
+	var child_count := layer.get_child_count(true)
+	Global.disable_button(
+		Global.animation_timeline.remove_layer,
+		layer.is_locked_in_hierarchy() or Global.current_project.layers.size() == child_count + 1
+	)
 
 
 func _on_link_button_pressed() -> void:
@@ -207,7 +216,22 @@ func _select_current_layer() -> void:
 func _on_popup_menu_id_pressed(id: int) -> void:
 	var layer := Global.current_project.layers[layer_index]
 	if id == 0:
+		properties.layer_indices = _get_layer_indices()
+		properties.popup_centered()
+	elif id == 1:
 		layer.clipping_mask = not layer.clipping_mask
-		popup_menu.set_item_checked(0, layer.clipping_mask)
+		popup_menu.set_item_checked(id, layer.clipping_mask)
 		clipping_mask_icon.visible = layer.clipping_mask
 		Global.canvas.draw_layers()
+
+
+func _get_layer_indices() -> PackedInt32Array:
+	var indices := []
+	for cel in Global.current_project.selected_cels:
+		var l: int = cel[1]
+		if not l in indices:
+			indices.append(l)
+	indices.sort()
+	if not layer_index in indices:
+		indices = [layer_index]
+	return indices

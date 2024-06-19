@@ -50,6 +50,7 @@ var reference_images: Array[ReferenceImage] = []
 var reference_index: int = -1  # The currently selected index ReferenceImage
 var vanishing_points := []  ## Array of Vanishing Points
 var fps := 6.0
+var user_data := ""  ## User defined data, set in the project properties.
 
 var x_symmetry_point: float
 var y_symmetry_point: float
@@ -232,9 +233,12 @@ func serialize() -> Dictionary:
 			cel_data.append(cel.serialize())
 			cel_data[-1]["metadata"] = _serialize_metadata(cel)
 
-		frame_data.append(
-			{"cels": cel_data, "duration": frame.duration, "metadata": _serialize_metadata(frame)}
-		)
+		var current_frame_data := {
+			"cels": cel_data, "duration": frame.duration, "metadata": _serialize_metadata(frame)
+		}
+		if not frame.user_data.is_empty():
+			current_frame_data["user_data"] = frame.user_data
+		frame_data.append(current_frame_data)
 	var brush_data := []
 	for brush in brushes:
 		brush_data.append({"size_x": brush.get_size().x, "size_y": brush.get_size().y})
@@ -265,6 +269,7 @@ func serialize() -> Dictionary:
 		"export_file_name": file_name,
 		"export_file_format": file_format,
 		"fps": fps,
+		"user_data": user_data,
 		"metadata": metadata
 	}
 
@@ -335,6 +340,7 @@ func deserialize(dict: Dictionary, zip_reader: ZIPReader = null, file: FileAcces
 				duration = dict.frame_duration[frame_i]
 
 			var frame_class := Frame.new(cels, duration)
+			frame_class.user_data = frame.get("user_data", "")
 			_deserialize_metadata(frame_class, frame)
 			frames.append(frame_class)
 			frame_i += 1
@@ -347,7 +353,9 @@ func deserialize(dict: Dictionary, zip_reader: ZIPReader = null, file: FileAcces
 			_deserialize_metadata(layers[layer_i], dict.layers[layer_i])
 	if dict.has("tags"):
 		for tag in dict.tags:
-			animation_tags.append(AnimationTag.new(tag.name, Color(tag.color), tag.from, tag.to))
+			var new_tag := AnimationTag.new(tag.name, Color(tag.color), tag.from, tag.to)
+			new_tag.user_data = tag.get("user_data", "")
+			animation_tags.append(new_tag)
 		animation_tags = animation_tags
 	if dict.has("guides"):
 		for g in dict.guides:
@@ -378,12 +386,10 @@ func deserialize(dict: Dictionary, zip_reader: ZIPReader = null, file: FileAcces
 			x_symmetry_axis.points[point].y = floorf(y_symmetry_point / 2 + 1)
 		for point in y_symmetry_axis.points.size():
 			y_symmetry_axis.points[point].x = floorf(x_symmetry_point / 2 + 1)
-	if dict.has("export_file_name"):
-		file_name = dict.export_file_name
-	if dict.has("export_file_format"):
-		file_format = dict.export_file_format
-	if dict.has("fps"):
-		fps = dict.fps
+	file_name = dict.get("export_file_name", file_name)
+	file_format = dict.get("export_file_format", file_name)
+	fps = dict.get("fps", file_name)
+	user_data = dict.get("user_data", user_data)
 	_deserialize_metadata(self, dict)
 	order_layers()
 
@@ -481,18 +487,11 @@ func _animation_tags_changed(value: Array[AnimationTag]) -> void:
 		child.queue_free()
 
 	for tag in animation_tags:
-		var tag_c: Container = animation_tag_node.instantiate()
-		Global.tag_container.add_child(tag_c)
+		var tag_c := animation_tag_node.instantiate()
 		tag_c.tag = tag
+		Global.tag_container.add_child(tag_c)
 		var tag_position := Global.tag_container.get_child_count() - 1
 		Global.tag_container.move_child(tag_c, tag_position)
-		tag_c.get_node("Label").text = tag.name
-		tag_c.get_node("Label").modulate = tag.color
-		tag_c.get_node("Line2D").default_color = tag.color
-		tag_c.position = tag.get_position()
-		tag_c.custom_minimum_size.x = tag.get_minimum_size()
-		tag_c.get_node("Line2D").points[2] = Vector2(tag_c.custom_minimum_size.x, 0)
-		tag_c.get_node("Line2D").points[3] = Vector2(tag_c.custom_minimum_size.x, 32)
 
 	_set_timeline_first_and_last_frames()
 
@@ -507,7 +506,7 @@ func _set_timeline_first_and_last_frames() -> void:
 		for tag in animation_tags:
 			if current_frame + 1 >= tag.from && current_frame + 1 <= tag.to:
 				Global.animation_timeline.first_frame = tag.from - 1
-				Global.animation_timeline.last_frame = min(frames.size() - 1, tag.to - 1)
+				Global.animation_timeline.last_frame = mini(frames.size() - 1, tag.to - 1)
 
 
 func is_empty() -> bool:
@@ -520,11 +519,7 @@ func is_empty() -> bool:
 	)
 
 
-func can_pixel_get_drawn(
-	pixel: Vector2i,
-	image: SelectionMap = selection_map,
-	selection_position: Vector2i = Global.canvas.selection.big_bounding_rectangle.position
-) -> bool:
+func can_pixel_get_drawn(pixel: Vector2i, image := selection_map) -> bool:
 	if pixel.x < 0 or pixel.y < 0 or pixel.x >= size.x or pixel.y >= size.y:
 		return false
 
@@ -532,10 +527,6 @@ func can_pixel_get_drawn(
 		return false
 
 	if has_selection:
-		if selection_position.x < 0:
-			pixel.x -= selection_position.x
-		if selection_position.y < 0:
-			pixel.y -= selection_position.y
 		return image.is_pixel_selected(pixel)
 	else:
 		return true
@@ -588,7 +579,8 @@ func _z_index_sort(a: int, b: int, frame_index: int) -> bool:
 # use remove, and vice versa. To undo a move or swap, use move or swap with the parameters swapped.
 
 
-func add_frames(new_frames: Array, indices: Array) -> void:  # indices should be in ascending order
+# indices should be in ascending order
+func add_frames(new_frames: Array, indices: PackedInt32Array) -> void:
 	Global.canvas.selection.transform_content_confirm()
 	selected_cels.clear()
 	for i in new_frames.size():
@@ -605,14 +597,14 @@ func add_frames(new_frames: Array, indices: Array) -> void:  # indices should be
 	_update_frame_ui()
 
 
-func remove_frames(indices: Array) -> void:  # indices should be in ascending order
+func remove_frames(indices: PackedInt32Array) -> void:  # indices should be in ascending order
 	Global.canvas.selection.transform_content_confirm()
 	selected_cels.clear()
 	for i in indices.size():
 		# With each removed index, future indices need to be lowered, so subtract by i
 		# For each linked cel in the frame, update its layer's cel_link_sets
 		for l in layers.size():
-			var cel: BaseCel = frames[indices[i] - i].cels[l]
+			var cel := frames[indices[i] - i].cels[l]
 			cel.on_remove()
 			if cel.link_set != null:
 				cel.link_set["cels"].erase(cel)
@@ -624,14 +616,18 @@ func remove_frames(indices: Array) -> void:  # indices should be in ascending or
 	_update_frame_ui()
 
 
-func move_frame(from_index: int, to_index: int) -> void:
+# from_indices and to_indicies should be in ascending order
+func move_frames(from_indices: PackedInt32Array, to_indices: PackedInt32Array) -> void:
 	Global.canvas.selection.transform_content_confirm()
 	selected_cels.clear()
-	var frame := frames[from_index]
-	frames.remove_at(from_index)
-	Global.animation_timeline.project_frame_removed(from_index)
-	frames.insert(to_index, frame)
-	Global.animation_timeline.project_frame_added(to_index)
+	var removed_frames := []
+	for i in from_indices.size():
+		# With each removed index, future indices need to be lowered, so subtract by i
+		removed_frames.append(frames.pop_at(from_indices[i] - i))
+		Global.animation_timeline.project_frame_removed(from_indices[i] - i)
+	for i in to_indices.size():
+		frames.insert(to_indices[i], removed_frames[i])
+		Global.animation_timeline.project_frame_added(to_indices[i])
 	_update_frame_ui()
 
 
@@ -648,11 +644,11 @@ func swap_frame(a_index: int, b_index: int) -> void:
 	_set_timeline_first_and_last_frames()
 
 
-func reverse_frames(frame_indices: Array) -> void:
+func reverse_frames(frame_indices: PackedInt32Array) -> void:
 	Global.canvas.selection.transform_content_confirm()
 	for i in frame_indices.size() / 2:
-		var index: int = frame_indices[i]
-		var reverse_index: int = frame_indices[-i - 1]
+		var index := frame_indices[i]
+		var reverse_index := frame_indices[-i - 1]
 		var temp := frames[index]
 		frames[index] = frames[reverse_index]
 		frames[reverse_index] = temp
@@ -664,7 +660,8 @@ func reverse_frames(frame_indices: Array) -> void:
 	change_cel(-1)
 
 
-func add_layers(new_layers: Array, indices: Array, cels: Array) -> void:  # cels is 2d Array of cels
+## [param cels] is 2d Array of [BaseCel]s
+func add_layers(new_layers: Array, indices: PackedInt32Array, cels: Array) -> void:
 	Global.canvas.selection.transform_content_confirm()
 	selected_cels.clear()
 	for i in indices.size():
@@ -676,7 +673,7 @@ func add_layers(new_layers: Array, indices: Array, cels: Array) -> void:  # cels
 	_update_layer_ui()
 
 
-func remove_layers(indices: Array) -> void:
+func remove_layers(indices: PackedInt32Array) -> void:
 	Global.canvas.selection.transform_content_confirm()
 	selected_cels.clear()
 	for i in indices.size():
@@ -690,7 +687,9 @@ func remove_layers(indices: Array) -> void:
 
 
 # from_indices and to_indicies should be in ascending order
-func move_layers(from_indices: Array, to_indices: Array, to_parents: Array) -> void:
+func move_layers(
+	from_indices: PackedInt32Array, to_indices: PackedInt32Array, to_parents: Array
+) -> void:
 	Global.canvas.selection.transform_content_confirm()
 	selected_cels.clear()
 	var removed_layers := []
